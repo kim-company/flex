@@ -20,6 +20,12 @@ defmodule Flex do
     end
   end
 
+  def connect(_client, _file) do
+    # TODO: return undelying connection after perfming connect request.
+    # see https://github.com/teamon/tesla/blob/c692bad2d5e805bc25c767cfd06e9f62a14de5e7/test/tesla/adapter/mint_test.exs#L110
+    {:error, :not_implemented}
+  end
+
   defp startstop(client, action) do
     case read(client, action) do
       {:ok, _body} -> :ok
