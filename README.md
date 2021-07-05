@@ -2,6 +2,12 @@
 
 **TODO: Add description**
 
+## Gotchas
+- relies on docker executable which must be visible from $PATH
+- when using a `docker context` different from the default "default", ensure
+  you've created it beforehand.
+- before `iex -S mix`, `make` should be fired to populate bin/.
+
 ## Installation
 
 If [available in Hex](https://hex.pm/docs/publish), the package can be installed
