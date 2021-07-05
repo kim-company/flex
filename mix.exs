@@ -20,7 +20,7 @@ defmodule Flex.MixProject do
       {:tesla, "~> 1.4.1"},
       {:jason, "~> 1.2"},
       {:mint, "~> 1.0"},
-      {:composex, git: "https://git.keepinmind.info/extra/composex.git", tag: "v0.1.0"},
+      {:composex, git: "https://git.keepinmind.info/extra/composex.git", tag: "v0.1.3"},
     ]
   end
 end
