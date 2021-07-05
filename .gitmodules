@@ -1,0 +1,3 @@
+[submodule "flexi"]
+	path = flexi
+	url = git@git.keepinmind.info:extra/flexi.git
