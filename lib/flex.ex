@@ -1,5 +1,5 @@
 defmodule Flex do
-  @version "2"
+  @version "2" # Flexi gateway API version
 
   defp httperror(status, %{"error" => error}), do: "status #{status}: #{error}"
   defp httperror(status, _), do: "status #{status}"
