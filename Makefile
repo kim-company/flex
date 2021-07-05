@@ -13,5 +13,10 @@ $(SCRIPTS): | $(BINDIR)/aux
 $(BINDIR)/aux: ; mkdir -p $@
 $(BINDIR)/admin: ; mkdir -p $@
 
-$(BINDIR)/aux/%: ; cp flexi/aux/$* $@
-$(BINDIR)/admin/%: ; $(MAKE) -C flexi $@
+$(BINDIR)/aux/%:
+	cp flexi/aux/$* $@
+	ln -s $@ $(BINDIR)/$(@F)
+
+$(BINDIR)/admin/%:
+	$(MAKE) -C flexi $@
+	ln -s $@ $(BINDIR)/$(@F)
