@@ -47,4 +47,6 @@ defmodule Flex.Space do
   def logs(%__MODULE__{driver: d}, dev \\ :stdio), do: Composex.logs(d, dev)
   def ps(%__MODULE__{driver: d}), do: Composex.ps(d)
 
+  def client(%__MODULE__{token: token}), do: Flex.client!(token)
+
 end

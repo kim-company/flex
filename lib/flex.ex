@@ -1,5 +1,5 @@
 defmodule Flex do
-  @version "2" # Flexi gateway API version
+  @version "3" # Flexi gateway API version
 
   defp httperror(status, %{"error" => error}), do: "status #{status}: #{error}"
   defp httperror(status, _), do: "status #{status}"
@@ -61,7 +61,7 @@ defmodule Flex do
     middleware = [
       # TODO: https
       {Tesla.Middleware.BaseUrl, "http://#{addr(token)}"},
-      {Tesla.Middleware.Query, [t: token]},
+      {Tesla.Middleware.Headers, [{"authorization", "Bearer #{token}"}]
       Tesla.Middleware.JSON,
     ]
     adapter = {Tesla.Adapter.Mint, []}
