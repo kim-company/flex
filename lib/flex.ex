@@ -39,7 +39,6 @@ defmodule Flex do
 
   def start(client), do: startstop(client, "start")
   def stop(client), do: startstop(client, "stop")
-
   def help(client), do: read(client, "help")
 
   defp tokenbody(token) do
