@@ -27,3 +27,4 @@ flex-*.tar
 
 *.swp
 bin
+priv/

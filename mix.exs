@@ -7,6 +7,14 @@ defmodule Flex.MixProject do
       version: "0.1.0",
       elixir: "~> 1.12",
       start_permanent: Mix.env() == :prod,
+      compilers: [:elixir_make] ++ Mix.compilers,
+      make_targets: [
+        "../priv/authorise",
+        "../priv/sh/keygen",
+      ],
+      make_clean: ["clean"],
+      make_cwd: "flexi",
+      make_env: %{ "BINDIR" => "../priv" },
       deps: deps()
     ]
   end
@@ -20,7 +28,8 @@ defmodule Flex.MixProject do
       {:tesla, "~> 1.4.1"},
       {:jason, "~> 1.2"},
       {:mint, "~> 1.0"},
-      {:composex, git: "https://git.keepinmind.info/extra/composex.git", tag: "v0.1.3"}
+      {:composex, git: "https://git.keepinmind.info/extra/composex.git", tag: "v0.1.3"},
+      {:elixir_make, "~> 0.4", runtime: false},
     ]
   end
 end

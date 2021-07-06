@@ -13,8 +13,9 @@ defmodule Flex.Space do
   @gateway_port 8080
 
   defp find_executable(name) do
-    ["bin", name]
-    |> Path.join()
+    :flex
+    |> :code.priv_dir()
+    |> Path.join(name)
     |> Path.absname()
   end
 
