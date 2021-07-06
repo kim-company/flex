@@ -1,5 +1,6 @@
 defmodule Flex do
-  @version "3" # Flexi gateway API version
+  # Flexi gateway API version
+  @version "3"
 
   defp httperror(status, %{"error" => error}), do: "status #{status}: #{error}"
   defp httperror(status, _), do: "status #{status}"
@@ -54,6 +55,7 @@ defmodule Flex do
 
   def client!(token) do
     have = version(token)
+
     if have != @version do
       raise "incompatible flexi version: want #{@version}, have #{have}"
     end
@@ -62,10 +64,10 @@ defmodule Flex do
       # TODO: https
       {Tesla.Middleware.BaseUrl, "http://#{addr(token)}"},
       {Tesla.Middleware.Headers, [{"authorization", "Bearer #{token}"}]},
-      Tesla.Middleware.JSON,
+      Tesla.Middleware.JSON
     ]
+
     adapter = {Tesla.Adapter.Mint, []}
     Tesla.client(middleware, adapter)
   end
-
 end
