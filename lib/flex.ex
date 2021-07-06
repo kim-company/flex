@@ -61,7 +61,7 @@ defmodule Flex do
     middleware = [
       # TODO: https
       {Tesla.Middleware.BaseUrl, "http://#{addr(token)}"},
-      {Tesla.Middleware.Headers, [{"authorization", "Bearer #{token}"}]
+      {Tesla.Middleware.Headers, [{"authorization", "Bearer #{token}"}]},
       Tesla.Middleware.JSON,
     ]
     adapter = {Tesla.Adapter.Mint, []}
