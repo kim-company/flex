@@ -1,4 +1,10 @@
 defmodule Flex.Space do
+  @moduledoc """
+  Provides a wrapper around the Composex driver. Under the hood explots `docker
+  compose` with multiple context support to bring containers/tasks up.
+  """
+  @moduledoc since: "0.1.0"
+
   defstruct driver: %Composex{}, token: nil
 
   @rsa_pub_b64 "rsa.pub.b64"

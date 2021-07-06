@@ -1,4 +1,13 @@
 defmodule Flex do
+  @moduledoc """
+  Flex is an HTTP client that speaks with a flexi gateway. A client instance
+  can be obtained from a gateway token. It is usually computed using
+  Flexi's admin/authorise tool, or through the Flex.Space module.
+
+  Use Flex.Space to bring up/down a Flexi space (i.e. Task or Container).
+  """
+  @moduledoc since: "0.1.0"
+
   # Flexi gateway API version
   @version "3"
 
