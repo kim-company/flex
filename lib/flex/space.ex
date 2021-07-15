@@ -60,10 +60,10 @@ defmodule Flex.Space do
     end
   end
 
-  def up(%__MODULE__{driver: d}, logfun \\ &IO.puts/1) do
+  def up(s = %__MODULE__{driver: d}, logfun \\ &IO.puts/1) do
     with :ok <- Composex.up(d, logfun),
          {:ok, addr} <- Composex.gateway(d, @gateway_port) do
-      authorise(d, addr)
+      authorise(s, addr)
     end
   end
 
