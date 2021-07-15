@@ -19,7 +19,7 @@ defmodule Flex.Space do
     |> Path.absname()
   end
 
-  def clone(ctx, old, new) do
+  def clone!(ctx, old, new) do
     {:ok, _files} = File.cp_r(old, new)
     # From bin/flexi/admin/
     cmd = find_executable("keygen")
@@ -44,20 +44,27 @@ defmodule Flex.Space do
   defp authorise(s = %__MODULE__{driver: d}, addr) do
     keypath = Path.join([d.dir, @rsa])
     cmd = find_executable("authorise")
-    {rawtoken, 0} = System.shell("#{cmd} -a #{addr} -k #{keypath} 2>/dev/null")
-    {:ok, %__MODULE__{s | token: String.trim(rawtoken)}}
+    {rawtoken, code} = System.shell("#{cmd} -a #{addr} -k #{keypath} 2>/dev/null")
+
+    case code do
+      0 -> {:ok, %__MODULE__{s | token: String.trim(rawtoken)}}
+      code -> {:error, "authorise exited with code #{code}"}
+    end
   end
 
   def recover(ctx, dir) do
     driver = %Composex{ctx: ctx, prj: Path.basename(dir), dir: dir}
-    {:ok, addr} = Composex.gateway(driver, @gateway_port)
-    authorise(%__MODULE__{driver: driver}, addr)
+
+    with {:ok, addr} <- Composex.gateway(driver, @gateway_port) do
+      authorise(%__MODULE__{driver: driver}, addr)
+    end
   end
 
   def up(%__MODULE__{driver: d}, logfun \\ &IO.puts/1) do
-    :ok = Composex.up(d, logfun)
-    {:ok, addr} = Composex.gateway(d, @gateway_port)
-    authorise(d, addr)
+    with :ok <- Composex.up(d, logfun),
+         {:ok, addr} <- Composex.gateway(d, @gateway_port) do
+      authorise(d, addr)
+    end
   end
 
   def down(%__MODULE__{driver: d}, logfun \\ &IO.puts/1), do: Composex.down(d, logfun)
