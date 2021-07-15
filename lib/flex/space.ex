@@ -41,16 +41,23 @@ defmodule Flex.Space do
     {:ok, %__MODULE__{driver: driver}}
   end
 
-  def up(s = %__MODULE__{driver: d}, logfun \\ &IO.puts/1) do
-    :ok = Composex.up(d, logfun)
-    {:ok, addr} = Composex.gateway(d, @gateway_port)
-
+  defp authorise(s = %__MODULE__{driver: d}, addr) do
     keypath = Path.join([d.dir, @rsa])
-    # From bin/flexi/admin/
     cmd = find_executable("authorise")
     {rawtoken, 0} = System.shell("#{cmd} -a #{addr} -k #{keypath} 2>/dev/null")
-
     {:ok, %__MODULE__{s | token: String.trim(rawtoken)}}
+  end
+
+  def recover(ctx, dir) do
+    driver = %Composex{ctx: ctx, prj: Path.basename(dir), dir: dir}
+    {:ok, addr} = Composex.gateway(driver, @gateway_port)
+    authorise(%__MODULE__{driver: driver}, addr)
+  end
+
+  def up(%__MODULE__{driver: d}, logfun \\ &IO.puts/1) do
+    :ok = Composex.up(d, logfun)
+    {:ok, addr} = Composex.gateway(d, @gateway_port)
+    authorise(d, addr)
   end
 
   def down(%__MODULE__{driver: d}, logfun \\ &IO.puts/1), do: Composex.down(d, logfun)
