@@ -41,28 +41,8 @@ defmodule Flex do
   def stop(client), do: startstop(client, "stop")
   def help(client), do: read(client, "help")
 
-  defp tokenbody(token) do
-    token
-    |> String.split(".")
-    |> Enum.at(1)
-    |> Base.url_decode64!(padding: false)
-    |> Jason.decode!()
-  end
-
-  defp version(token) do
-    token
-    |> tokenbody()
-    |> Map.get("version")
-  end
-
-  defp addr(token) do
-    token
-    |> tokenbody()
-    |> Map.get("addr")
-  end
-
   def client!(token) do
-    have = version(token)
+    have = Space.version(token)
 
     if have != @version do
       raise "incompatible flexi version: want #{@version}, have #{have}"
@@ -70,12 +50,12 @@ defmodule Flex do
 
     middleware = [
       # TODO: https
-      {Tesla.Middleware.BaseUrl, "http://#{addr(token)}"},
+      {Tesla.Middleware.BaseUrl, "http://#{Space.addr(token)}"},
       {Tesla.Middleware.Headers, [{"authorization", "Bearer #{token}"}]},
       Tesla.Middleware.JSON
     ]
 
-    adapter = {Tesla.Adapter.Mint, [timeout: 1000*60*20]}
+    adapter = {Tesla.Adapter.Mint, [timeout: 1000 * 60 * 20]}
     Tesla.client(middleware, adapter)
   end
 end

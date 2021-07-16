@@ -52,6 +52,26 @@ defmodule Space do
     end
   end
 
+  defp tokenbody(token) do
+    token
+    |> String.split(".")
+    |> Enum.at(1)
+    |> Base.url_decode64!(padding: false)
+    |> Jason.decode!()
+  end
+
+  def version(token) do
+    token
+    |> tokenbody()
+    |> Map.get("version")
+  end
+
+  def addr(token) do
+    token
+    |> tokenbody()
+    |> Map.get("addr")
+  end
+
   def recover(ctx, dir) do
     driver = %Compose{ctx: ctx, prj: Path.basename(dir), dir: dir}
 
