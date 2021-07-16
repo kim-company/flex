@@ -1,7 +1,4 @@
 # Flex
-
-**TODO: Add description**
-
 ## Gotchas
 - relies on docker executable which must be visible from $PATH
 - when using a `docker context` different from the default "default", ensure
@@ -9,19 +6,12 @@
 - before `iex -S mix`, ~~`make` should be fired to populate bin/.~~
 
 ## Installation
-
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `flex` to your list of dependencies in `mix.exs`:
-
 ```elixir
 def deps do
   [
-    {:flex, "~> 0.1.0"}
+    {:flex, git: "git@git.keepinmind.info:extra/flex.git", submodules: true},
   ]
 end
 ```
-
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at [https://hexdocs.pm/flex](https://hexdocs.pm/flex).
+You're encouraged to also specify a tag.
 
