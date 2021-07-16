@@ -73,6 +73,9 @@ defmodule Compose do
           _ -> {:error, "missing URL field in gateway publisher"}
         end
 
+      {:ok, []} ->
+        {:error, "no data available"}
+
       {:error, reason} ->
         {:error, reason}
     end
