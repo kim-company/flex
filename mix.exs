@@ -4,7 +4,7 @@ defmodule Flex.MixProject do
   def project do
     [
       app: :flex,
-      version: "0.1.1",
+      version: "0.1.0",
       elixir: "~> 1.12",
       start_permanent: Mix.env() == :prod,
       compilers: [:elixir_make] ++ Mix.compilers(),
@@ -28,7 +28,6 @@ defmodule Flex.MixProject do
       {:tesla, "~> 1.4.1"},
       {:jason, "~> 1.2"},
       {:mint, "~> 1.0"},
-      {:composex, git: "https://git.keepinmind.info/extra/composex.git", tag: "v0.1.3"},
       {:elixir_make, "~> 0.4", runtime: false}
     ]
   end
