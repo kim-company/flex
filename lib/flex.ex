@@ -42,7 +42,7 @@ defmodule Flex do
   def help(client), do: read(client, "help")
 
   def client!(token) do
-    have = Space.version(token)
+    have = Space.token_version(token)
 
     if have != @version do
       raise "incompatible flexi version: want #{@version}, have #{have}"
@@ -50,7 +50,7 @@ defmodule Flex do
 
     middleware = [
       # TODO: https
-      {Tesla.Middleware.BaseUrl, "http://#{Space.addr(token)}"},
+      {Tesla.Middleware.BaseUrl, "http://#{Space.token_addr(token)}"},
       {Tesla.Middleware.Headers, [{"authorization", "Bearer #{token}"}]},
       Tesla.Middleware.JSON
     ]

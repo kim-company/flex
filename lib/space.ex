@@ -60,17 +60,19 @@ defmodule Space do
     |> Jason.decode!()
   end
 
-  def version(token) do
+  def token_version(token) do
     token
     |> tokenbody()
     |> Map.get("version")
   end
 
-  def addr(token) do
+  def token_addr(token) do
     token
     |> tokenbody()
     |> Map.get("addr")
   end
+
+  def addr(s = %__MODULE__{}, port \\ @gateway_port), do: Compose.gateway(s, port)
 
   def recover(ctx, dir) do
     driver = %Compose{ctx: ctx, prj: Path.basename(dir), dir: dir}
