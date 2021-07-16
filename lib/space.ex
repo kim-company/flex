@@ -72,7 +72,7 @@ defmodule Space do
     |> Map.get("addr")
   end
 
-  def addr(s = %__MODULE__{}, port \\ @gateway_port), do: Compose.gateway(s, port)
+  def addr(%__MODULE__{driver: d}, port \\ @gateway_port), do: Compose.gateway(d, port)
 
   def recover(ctx, dir) do
     driver = %Compose{ctx: ctx, prj: Path.basename(dir), dir: dir}
