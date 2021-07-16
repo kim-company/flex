@@ -75,7 +75,7 @@ defmodule Flex do
       Tesla.Middleware.JSON
     ]
 
-    adapter = {Tesla.Adapter.Mint, [timeout: 1000*60*10]}
+    adapter = {Tesla.Adapter.Mint, [timeout: 1000*60*20]}
     Tesla.client(middleware, adapter)
   end
 end
