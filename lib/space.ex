@@ -66,7 +66,7 @@ defmodule Space do
          {:ok, addr} <- Compose.gateway(d, @gateway_port),
          {:ok, token} <- authorise(s, addr),
          client <- Flex.client!(token),
-         :ok <- Flex.waithealthy(client, @health_retries, logfun) do
+         :ok <- Flex.waithealthy(client, @health_retries) do
       {:ok, client}
     else
       {:error, :health, :timeout} ->
@@ -75,6 +75,8 @@ defmodule Space do
         {:error, "healthcheck timeout"}
     end
   end
+
+  def addr(%__MODULE__{driver: d}, port \\ @gateway_port), do: Compose.gateway(d, port)
 
   def down(%__MODULE__{driver: d}, logfun \\ &IO.puts/1), do: Compose.down(d, logfun)
   def logs(%__MODULE__{driver: d}, dev \\ :stdio), do: Compose.logs(d, dev)
