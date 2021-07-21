@@ -55,9 +55,11 @@ defmodule Space do
 
   def recover(ctx, dir) do
     driver = %Compose{ctx: ctx, prj: Path.basename(dir), dir: dir}
+    space = %__MODULE__{driver: driver}
 
-    with {:ok, addr} <- Compose.gateway(driver, @gateway_port) do
-      authorise(%__MODULE__{driver: driver}, addr)
+    with {:ok, addr} <- Compose.gateway(driver, @gateway_port),
+         {:ok, token} <- authorise(space, addr) do
+      {:ok, space, Flex.client!(token)}
     end
   end
 
