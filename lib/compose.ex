@@ -51,9 +51,6 @@ defmodule Compose do
   # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-lifecycle.html
   defp waitrunning(c, logfun) do
     case ps(c) do
-      {:ok, [%{"State" => "Running"} | _]} ->
-        :ok
-
       {:ok, [%{"State" => state} | _]} ->
         logfun.("task state is #{state}")
 
@@ -69,6 +66,9 @@ defmodule Compose do
           "Activating" ->
             Process.sleep(1000)
             waitrunning(c, logfun)
+
+          "Running" ->
+            :ok
 
           other ->
             {:error, "task state skipped Running, now is #{other}"}
