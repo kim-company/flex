@@ -10,9 +10,11 @@ defmodule Compose do
   defp dockercmd(), do: System.find_executable("docker")
   defp baseargs(%__MODULE__{ctx: ctx, prj: prj}), do: ["-c", ctx, "compose", "-p", prj]
 
-  defp switchargs(c = %__MODULE__{ctx: "default"}, "up"), do: baseargs(c) ++ ["up", "-d"]
-  defp switchargs(c, "up"), do: baseargs(c) ++ ["up"]
-  defp switchargs(c, "down"), do: baseargs(c) ++ ["down"]
+  defp switchargs(c = %__MODULE__{ctx: "default"}, "up"),
+    do: baseargs(c) ++ ["up", "-d", "--no-color"]
+
+  defp switchargs(c, "up"), do: baseargs(c) ++ ["up", "--no-color"]
+  defp switchargs(c, "down"), do: baseargs(c) ++ ["down", "--no-color"]
 
   defp flush_loop(logfun) do
     # Crashes when unexpected messages are received.
@@ -20,8 +22,13 @@ defmodule Compose do
       {_port, {:data, data}} ->
         data
         |> List.to_string()
-        |> String.trim()
-        |> logfun.()
+        |> String.split("\n")
+        |> Enum.map(&String.trim(&1))
+        |> Enum.each(fn s ->
+          if String.length(s) > 0 do
+            logfun.(s)
+          end
+        end)
 
         flush_loop(logfun)
     end
@@ -41,7 +48,54 @@ defmodule Compose do
     end
   end
 
-  def up(c = %__MODULE__{}, logfun \\ &discard/1), do: switch(c, "up", logfun)
+  # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-lifecycle.html
+  defp waitrunning(c, logfun) do
+    case ps(c) do
+      {:ok, [%{"State" => "Running"} | _]} ->
+        :ok
+
+      {:ok, [%{"State" => state} | _]} ->
+        logfun.("task state is #{state}")
+
+        case state do
+          "Provisioning" ->
+            Process.sleep(3000)
+            waitrunning(c, logfun)
+
+          "Pending" ->
+            Process.sleep(2000)
+            waitrunning(c, logfun)
+
+          "Activating" ->
+            Process.sleep(1000)
+            waitrunning(c, logfun)
+
+          other ->
+            {:error, "task state skipped Running, now is #{other}"}
+        end
+
+      {:ok, []} ->
+        {:error, "no data available"}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def up(c, logfun \\ &discard/1)
+
+  def up(c = %__MODULE__{ctx: "default"}, logfun) do
+    switch(c, "up", logfun)
+  end
+
+  def up(c = %__MODULE__{}, logfun) do
+    with :ok <- switch(c, "up", logfun),
+         logfun.("waiting for state to become RUNNING"),
+         :ok <- waitrunning(c, logfun) do
+      :ok
+    end
+  end
+
   def down(c = %__MODULE__{}, logfun \\ &discard/1), do: switch(c, "down", logfun)
 
   def logs(c = %__MODULE__{dir: dir}, dev \\ :stdio) do
