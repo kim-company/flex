@@ -66,7 +66,7 @@ defmodule Space do
          {:ok, addr} <- Compose.gateway(d, @gateway_port),
          {:ok, token} <- authorise(s, addr),
          client <- Flex.client!(token),
-         :ok <- Flex.waithealthy(client, @health_retries) do
+         :ok <- Flex.waithealthy(client, @health_retries, logfun) do
       {:ok, client}
     else
       {:error, :health, :timeout} ->
