@@ -11,10 +11,10 @@ defmodule Compose do
   defp baseargs(%__MODULE__{ctx: ctx, prj: prj}), do: ["-c", ctx, "compose", "-p", prj]
 
   defp switchargs(c = %__MODULE__{ctx: "default"}, "up"),
-    do: baseargs(c) ++ ["up", "-d", "--no-color"]
+    do: baseargs(c) ++ ["up", "-d"]
 
-  defp switchargs(c, "up"), do: baseargs(c) ++ ["up", "--no-color"]
-  defp switchargs(c, "down"), do: baseargs(c) ++ ["down", "--no-color"]
+  defp switchargs(c, "up"), do: baseargs(c) ++ ["up"]
+  defp switchargs(c, "down"), do: baseargs(c) ++ ["down"]
 
   defp flush_loop(logfun) do
     # Crashes when unexpected messages are received.
