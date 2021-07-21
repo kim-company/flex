@@ -11,7 +11,7 @@ defmodule Space do
   @rsa "rsa"
   @flexi_env "flexi.env"
   @gateway_port 8080
-  @health_retries 5
+  @health_retries 8
 
   defp find_executable(name) do
     :flex
