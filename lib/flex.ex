@@ -41,8 +41,44 @@ defmodule Flex do
   def stop(client), do: startstop(client, "stop")
   def help(client), do: read(client, "help")
 
+  defp tokenbody(token) do
+    token
+    |> String.split(".")
+    |> Enum.at(1)
+    |> Base.url_decode64!(padding: false)
+    |> Jason.decode!()
+  end
+
+  def token_version(token) do
+    token
+    |> tokenbody()
+    |> Map.get("version")
+  end
+
+  def token_addr(token) do
+    token
+    |> tokenbody()
+    |> Map.get("addr")
+  end
+
+  def waithealthy(_, 0, _), do: {:error, :health, :timeout}
+
+  def waithealthy(client, tries, logfun) do
+    logfun.("healthcheck ##{tries} on /_health")
+
+    case Tesla.get(client, "_health") do
+      {:ok, %{status: 200}} ->
+        :ok
+
+      _ ->
+        logfun.("healthcheck ##{tries} failed: retring in 3s")
+        Process.sleep(3000)
+        waithealthy(client, tries - 1, logfun)
+    end
+  end
+
   def client!(token) do
-    have = Space.token_version(token)
+    have = token_version(token)
 
     if have != @version do
       raise "incompatible flexi version: want #{@version}, have #{have}"
@@ -50,12 +86,12 @@ defmodule Flex do
 
     middleware = [
       # TODO: https
-      {Tesla.Middleware.BaseUrl, "http://#{Space.token_addr(token)}"},
+      {Tesla.Middleware.BaseUrl, "http://#{token_addr(token)}"},
       {Tesla.Middleware.Headers, [{"authorization", "Bearer #{token}"}]},
       Tesla.Middleware.JSON
     ]
 
-    adapter = {Tesla.Adapter.Mint, [timeout: 1000 * 60 * 20]}
+    adapter = {Tesla.Adapter.Mint, [timeout: 1000 * 30]}
     Tesla.client(middleware, adapter)
   end
 end

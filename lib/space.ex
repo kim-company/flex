@@ -5,12 +5,13 @@ defmodule Space do
   """
   @moduledoc since: "0.1.0"
 
-  defstruct driver: %Compose{}, token: nil
+  defstruct driver: %Compose{}
 
   @rsa_pub_b64 "rsa.pub.b64"
   @rsa "rsa"
   @flexi_env "flexi.env"
   @gateway_port 8080
+  @health_retries 5
 
   defp find_executable(name) do
     :flex
@@ -41,38 +42,16 @@ defmodule Space do
     {:ok, %__MODULE__{driver: driver}}
   end
 
-  defp authorise(s = %__MODULE__{driver: d}, addr) do
+  defp authorise(%__MODULE__{driver: d}, addr) do
     keypath = Path.join([d.dir, @rsa])
     cmd = find_executable("authorise")
     {rawtoken, code} = System.shell("#{cmd} -a #{addr} -k #{keypath} 2>/dev/null")
 
     case code do
-      0 -> {:ok, %__MODULE__{s | token: String.trim(rawtoken)}}
+      0 -> {:ok, String.trim(rawtoken)}
       code -> {:error, "authorise exited with code #{code}"}
     end
   end
-
-  defp tokenbody(token) do
-    token
-    |> String.split(".")
-    |> Enum.at(1)
-    |> Base.url_decode64!(padding: false)
-    |> Jason.decode!()
-  end
-
-  def token_version(token) do
-    token
-    |> tokenbody()
-    |> Map.get("version")
-  end
-
-  def token_addr(token) do
-    token
-    |> tokenbody()
-    |> Map.get("addr")
-  end
-
-  def addr(%__MODULE__{driver: d}, port \\ @gateway_port), do: Compose.gateway(d, port)
 
   def recover(ctx, dir) do
     driver = %Compose{ctx: ctx, prj: Path.basename(dir), dir: dir}
@@ -84,14 +63,20 @@ defmodule Space do
 
   def up(s = %__MODULE__{driver: d}, logfun \\ &IO.puts/1) do
     with :ok <- Compose.up(d, logfun),
-         {:ok, addr} <- Compose.gateway(d, @gateway_port) do
-      authorise(s, addr)
+         {:ok, addr} <- Compose.gateway(d, @gateway_port),
+         {:ok, token} <- authorise(s, addr),
+         client <- Flex.client!(token),
+         :ok <- Flex.waithealthy(client, @health_retries, logfun) do
+      {:ok, client}
+    else
+      {:error, :health, :timeout} ->
+        logfun.("rolling back after healthcheck timeout")
+        :ok = Compose.down(d, logfun)
+        {:error, "healthcheck timeout"}
     end
   end
 
   def down(%__MODULE__{driver: d}, logfun \\ &IO.puts/1), do: Compose.down(d, logfun)
   def logs(%__MODULE__{driver: d}, dev \\ :stdio), do: Compose.logs(d, dev)
   def ps(%__MODULE__{driver: d}), do: Compose.ps(d)
-
-  def client(%__MODULE__{token: token}), do: Flex.client!(token)
 end
