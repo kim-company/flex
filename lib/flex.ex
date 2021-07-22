@@ -6,15 +6,155 @@ defmodule Flex do
 
   Use Space to bring up/down a Flexi space (i.e. Task or Container).
   """
-  @moduledoc since: "0.1.0"
 
   # Flexi gateway API version
   @version "3"
+  @health_retries 8
+  @health_wait 2000
+
+  defstruct client: nil, space: nil, token: ""
+
+  defp tokenbody!(token) do
+    token
+    |> String.split(".")
+    |> Enum.at(1)
+    |> Base.url_decode64!(padding: false)
+    |> Jason.decode!()
+  end
+
+  def token_version!(token) do
+    token
+    |> tokenbody!()
+    |> Map.get("version")
+  end
+
+  def token_addr!(token) do
+    token
+    |> tokenbody!()
+    |> Map.get("addr")
+  end
+
+  defp waithealthy(_, 0, _), do: {:error, "healthcheck failed"}
+
+  defp waithealthy(client, tries, logfun) do
+    logfun.("healthcheck ##{tries} on /_health")
+
+    # TODO: timeout might be more strict here.
+    case Tesla.get(client, "_health") do
+      {:ok, %{status: 200}} ->
+        :ok
+
+      _ ->
+        logfun.("healthcheck ##{tries} failed: retring in #{@health_wait / 1000}s")
+        Process.sleep(@health_wait)
+        waithealthy(client, tries - 1, logfun)
+    end
+  end
+
+  def client(token) do
+    # TODO: do it safely
+    have = token_version!(token)
+    baseurl = "http://#{token_addr!(token)}"
+
+    middleware = [
+      # TODO: https
+      {Tesla.Middleware.BaseUrl, baseurl},
+      {Tesla.Middleware.Headers, [{"authorization", "Bearer #{token}"}]},
+      Tesla.Middleware.JSON
+    ]
+
+    if have != @version do
+      {:error, "incompatible flexi version: want #{@version}, have #{have}"}
+    else
+      adapter = {Tesla.Adapter.Mint, [timeout: 1000 * 30]}
+      {:ok, Tesla.client(middleware, adapter)}
+    end
+  end
+
+  defp rollback(ctx, dir, logfun) do
+    with {:ok, space} <- Space.recover(ctx, dir),
+         :ok <- Space.down(space, logfun),
+         {:ok, _files} <- File.rm_rf(dir) do
+      :ok
+    end
+  end
+
+  def new(ctx, old, new, logfun \\ &IO.puts/1) do
+    tic = Time.utc_now()
+
+    with {:ok, space} <- Space.clone(ctx, old, new),
+         {:ok, token} <- Space.up(space, logfun),
+         {:ok, client} <- client(token),
+         :ok = waithealthy(client, @health_retries, logfun) do
+      diff = Time.diff(Time.utc_now(), tic, :second)
+      logfun.("flex dir=#{new} addr=#{token_addr!(token)} created in #{diff}s")
+      {:ok, %__MODULE__{client: client, space: space, token: token}}
+    else
+      {:error, reason} ->
+        logfun.("Rolling back after creation failure: #{reason}")
+        rollback(ctx, new, logfun)
+        {:error, reason}
+    end
+  end
+
+  def recover(ctx, dir, logfun \\ &IO.puts/1) do
+    with {:ok, space} <- Space.recover(ctx, dir),
+         {:ok, addr} <- Space.addr(space),
+         {:ok, token} <- Space.authorise(space, addr),
+         {:ok, client} <- client(token),
+         :ok = waithealthy(client, @health_retries / 2, logfun) do
+      {:ok, %__MODULE__{client: client, space: space, token: token}}
+    else
+      {:error, reason} ->
+        logfun.("rolling back after recover failure: #{reason}")
+        rollback(ctx, dir, logfun)
+        {:error, reason}
+    end
+  end
+
+  def recover_all(ctx, paths, logfun \\ &IO.puts/1) do
+    {ok, broken} =
+      paths
+      |> Stream.map(fn path ->
+        case recover(ctx, path, logfun) do
+          {:ok, l} -> {:ok, l}
+          {:error, reason} -> {:error, reason, path}
+        end
+      end)
+      |> Enum.split_with(fn elem ->
+        case elem do
+          {:ok, _} -> true
+          {:error, _, _} -> false
+        end
+      end)
+
+    ok = Enum.map(ok, fn {:ok, l} -> l end)
+
+    broken =
+      Enum.map(broken, fn {:error, reason, path} ->
+        logfun.("warning: found broken livesub folder at #{path}: #{reason}")
+        {reason, path}
+      end)
+
+    {ok, broken}
+  end
+
+  def destroy(flex = %__MODULE__{}, logfun \\ &IO.puts/1) do
+    %__MODULE__{space: space = %Space{driver: %Compose{dir: dir}}, token: token} = flex
+    tic = Time.utc_now()
+
+    with :ok <- Space.down(space, logfun),
+         {:ok, _files} <- File.rm_rf(dir) do
+      diff = Time.diff(Time.utc_now(), tic, :second)
+      logfun.("flex dir=#{dir} addr=#{token_addr!(token)} destroyed in #{diff}s")
+      :ok
+    end
+  end
 
   defp httperror(status, %{"error" => error}), do: "status #{status}: #{error}"
   defp httperror(status, _), do: "status #{status}"
 
-  def read(client, file) do
+  def read(%__MODULE__{client: client}, file) do
     case Tesla.get(client, file) do
       {:error, reason} -> {:error, %{message: reason}}
       {:ok, %{status: 200, body: body}} -> {:ok, body}
@@ -22,7 +162,7 @@ defmodule Flex do
     end
   end
 
-  def write(client, file, body) do
+  def write(%__MODULE__{client: client}, file, body) do
     case Tesla.put(client, file, body) do
       {:error, reason} -> {:error, %{message: reason}}
       {:ok, %{status: 200}} -> :ok
@@ -37,61 +177,7 @@ defmodule Flex do
     end
   end
 
-  def start(client), do: startstop(client, "start")
-  def stop(client), do: startstop(client, "stop")
-  def help(client), do: read(client, "help")
-
-  defp tokenbody(token) do
-    token
-    |> String.split(".")
-    |> Enum.at(1)
-    |> Base.url_decode64!(padding: false)
-    |> Jason.decode!()
-  end
-
-  def token_version(token) do
-    token
-    |> tokenbody()
-    |> Map.get("version")
-  end
-
-  def token_addr(token) do
-    token
-    |> tokenbody()
-    |> Map.get("addr")
-  end
-
-  def waithealthy(_, 0, _), do: {:error, :health, :timeout}
-
-  def waithealthy(client, tries, logfun) do
-    logfun.("healthcheck ##{tries} on /_health")
-
-    case Tesla.get(client, "_health") do
-      {:ok, %{status: 200}} ->
-        :ok
-
-      _ ->
-        logfun.("healthcheck ##{tries} failed: retring in 3s")
-        Process.sleep(3000)
-        waithealthy(client, tries - 1, logfun)
-    end
-  end
-
-  def client!(token) do
-    have = token_version(token)
-
-    if have != @version do
-      raise "incompatible flexi version: want #{@version}, have #{have}"
-    end
-
-    middleware = [
-      # TODO: https
-      {Tesla.Middleware.BaseUrl, "http://#{token_addr(token)}"},
-      {Tesla.Middleware.Headers, [{"authorization", "Bearer #{token}"}]},
-      Tesla.Middleware.JSON
-    ]
-
-    adapter = {Tesla.Adapter.Mint, [timeout: 1000 * 30]}
-    Tesla.client(middleware, adapter)
-  end
+  def start(%__MODULE__{client: client}), do: startstop(client, "start")
+  def stop(%__MODULE__{client: client}), do: startstop(client, "stop")
+  def help(flex = %__MODULE__{}), do: read(flex, "help")
 end
