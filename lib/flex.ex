@@ -180,4 +180,23 @@ defmodule Flex do
   def start(%__MODULE__{client: client}), do: startstop(client, "start")
   def stop(%__MODULE__{client: client}), do: startstop(client, "stop")
   def help(flex = %__MODULE__{}), do: read(flex, "help")
+
+  def is_running?(flex = %Flex{}) do
+    case help(flex) do
+      {:ok, h} ->
+        tool =
+          h
+          |> Map.get("data", %{})
+          |> Map.get("tool", %{})
+
+        pid = Map.get(tool, "pid", nil)
+        ec = Map.get(tool, "exit_code", nil)
+        pid != nil && ec == nil
+
+      _other ->
+        false
+    end
+  end
+
+  def addr(%__MODULE__{space: space}, port), do: Space.addr(space, port)
 end
