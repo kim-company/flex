@@ -170,15 +170,15 @@ defmodule Flex do
     end
   end
 
-  defp startstop(client, action) do
-    case read(client, action) do
+  defp startstop(flex, action) do
+    case read(flex, action) do
       {:ok, _body} -> :ok
       {:error, error} -> {:error, error}
     end
   end
 
-  def start(%__MODULE__{client: client}), do: startstop(client, "start")
-  def stop(%__MODULE__{client: client}), do: startstop(client, "stop")
+  def start(flex = %__MODULE__{}), do: startstop(flex, "start")
+  def stop(flex = %__MODULE__{}), do: startstop(flex, "stop")
   def help(flex = %__MODULE__{}), do: read(flex, "help")
 
   def is_running?(flex = %Flex{}) do
