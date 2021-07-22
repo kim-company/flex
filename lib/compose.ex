@@ -48,54 +48,8 @@ defmodule Compose do
     end
   end
 
-  # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-lifecycle.html
-  defp waitrunning(c, logfun) do
-    case ps(c) do
-      {:ok, [%{"State" => state} | _]} ->
-        logfun.("task state is #{state}")
-
-        case state do
-          "Provisioning" ->
-            Process.sleep(3000)
-            waitrunning(c, logfun)
-
-          "Pending" ->
-            Process.sleep(2000)
-            waitrunning(c, logfun)
-
-          "Activating" ->
-            Process.sleep(1000)
-            waitrunning(c, logfun)
-
-          "Running" ->
-            :ok
-
-          other ->
-            {:error, "task state skipped Running, now is #{other}"}
-        end
-
-      {:ok, []} ->
-        {:error, "no data available"}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
   def up(c, logfun \\ &discard/1)
-
-  def up(c = %__MODULE__{ctx: "default"}, logfun) do
-    switch(c, "up", logfun)
-  end
-
-  def up(c = %__MODULE__{}, logfun) do
-    with :ok <- switch(c, "up", logfun),
-         logfun.("waiting for state to become RUNNING"),
-         :ok <- waitrunning(c, logfun) do
-      :ok
-    end
-  end
-
+  def up(c = %__MODULE__{}, logfun), do: switch(c, "up", logfun)
   def down(c = %__MODULE__{}, logfun \\ &discard/1), do: switch(c, "down", logfun)
 
   def logs(c = %__MODULE__{dir: dir}, dev \\ :stdio) do
