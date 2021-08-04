@@ -1,0 +1,34 @@
+{
+  "gw_port": {
+    "sensitive": false,
+    "type": "number",
+    "value": 8080
+  },
+  "sec_group_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "sg-0b278377f82cf1dcd"
+  },
+  "subnet_ids": {
+    "sensitive": false,
+    "type": [
+      "set",
+      "string"
+    ],
+    "value": [
+      "subnet-3b6ff75d",
+      "subnet-436a010b",
+      "subnet-79ee4b23"
+    ]
+  },
+  "td_arn": {
+    "sensitive": false,
+    "type": "string",
+    "value": "arn:aws:ecs:eu-west-1:327134327116:task-definition/livesub:6"
+  },
+  "vpc_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "vpc-dc614fba"
+  }
+}

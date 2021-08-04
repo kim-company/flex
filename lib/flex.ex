@@ -12,7 +12,7 @@ defmodule Flex do
   @health_retries 8
   @health_wait 2000
 
-  defstruct client: nil, space: nil, token: ""
+  defstruct client: nil, space: nil
 
   defp tokenbody!(token) do
     token
@@ -71,52 +71,52 @@ defmodule Flex do
     end
   end
 
-  defp rollback(ctx, dir, logfun) do
-    with {:ok, space} <- Space.recover(ctx, dir),
+  defp rollback(dir, logfun) do
+    with {:ok, space} <- Space.recover_data(dir),
          :ok <- Space.down(space, logfun),
          {:ok, _files} <- File.rm_rf(dir) do
       :ok
     end
   end
 
-  def new(ctx, old, new, logfun \\ &IO.puts/1) do
+  def new(old, new, logfun \\ &IO.puts/1) do
     tic = Time.utc_now()
 
-    with {:ok, space} <- Space.clone(ctx, old, new),
-         {:ok, token} <- Space.up(space, logfun),
-         {:ok, client} <- client(token),
+    with {:ok, space} <- Space.clone(old, new),
+         {:ok, space} <- Space.up(space, logfun),
+         {:ok, client} <- client(space.token),
          :ok = waithealthy(client, @health_retries, logfun) do
       diff = Time.diff(Time.utc_now(), tic, :second)
-      logfun.("flex dir=#{new} addr=#{token_addr!(token)} created in #{diff}s")
-      {:ok, %__MODULE__{client: client, space: space, token: token}}
+      logfun.("flex dir=#{new} addr=#{token_addr!(space.token)} created in #{diff}s")
+      {:ok, %__MODULE__{client: client, space: space}}
     else
       {:error, reason} ->
         logfun.("Rolling back after creation failure: #{reason}")
-        rollback(ctx, new, logfun)
+        rollback(new, logfun)
         {:error, reason}
     end
   end
 
-  def recover(ctx, dir, logfun \\ &IO.puts/1) do
-    with {:ok, space} <- Space.recover(ctx, dir),
+  def recover(dir, logfun \\ &IO.puts/1) do
+    with {:ok, space} <- Space.recover(dir),
          {:ok, addr} <- Space.addr(space),
-         {:ok, token} <- Space.authorise(space, addr),
-         {:ok, client} <- client(token),
+         {:ok, space} <- Space.authorise(space, addr),
+         {:ok, client} <- client(space.token),
          :ok = waithealthy(client, @health_retries / 2, logfun) do
-      {:ok, %__MODULE__{client: client, space: space, token: token}}
+      {:ok, %__MODULE__{client: client, space: space}}
     else
       {:error, reason} ->
         logfun.("rolling back after recover failure: #{reason}")
-        rollback(ctx, dir, logfun)
+        rollback(dir, logfun)
         {:error, reason}
     end
   end
 
-  def recover_all(ctx, paths, logfun \\ &IO.puts/1) do
+  def recover_all(paths, logfun \\ &IO.puts/1) do
     {ok, broken} =
       paths
       |> Stream.map(fn path ->
-        case recover(ctx, path, logfun) do
+        case recover(path, logfun) do
           {:ok, l} -> {:ok, l}
           {:error, reason} -> {:error, reason, path}
         end
@@ -139,14 +139,13 @@ defmodule Flex do
     {ok, broken}
   end
 
-  def destroy(flex = %__MODULE__{}, logfun \\ &IO.puts/1) do
-    %__MODULE__{space: space = %Space{driver: %Compose{dir: dir}}, token: token} = flex
+  def destroy(%__MODULE__{space: space}, logfun \\ &IO.puts/1) do
     tic = Time.utc_now()
 
     with :ok <- Space.down(space, logfun),
-         {:ok, _files} <- File.rm_rf(dir) do
+         {:ok, _files} <- File.rm_rf(space.dir) do
       diff = Time.diff(Time.utc_now(), tic, :second)
-      logfun.("flex dir=#{dir} addr=#{token_addr!(token)} destroyed in #{diff}s")
+      logfun.("flex dir=#{space.dir} addr=#{token_addr!(space.token)} destroyed in #{diff}s")
       :ok
     end
   end
@@ -198,5 +197,5 @@ defmodule Flex do
     end
   end
 
-  def addr(%__MODULE__{space: space}, port), do: Space.addr(space, port)
+  def addr(%__MODULE__{space: space}), do: Space.addr(space)
 end

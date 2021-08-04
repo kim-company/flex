@@ -1,0 +1,17 @@
+// This is hujson, checkout https://github.com/tailscale/hujson
+{
+  // Key is the file name.
+  "config.json": {
+    "type": "file",
+    "role": "in",
+  },
+  "editor.sock": {
+    "type": "socket",
+    "role": "inout",
+  },
+  "stderr": {
+    "type": "file",
+    "role": "out",
+  },
+}
+

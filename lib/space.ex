@@ -1,15 +1,15 @@
 defmodule Space do
   @moduledoc """
-  Provides a wrapper around the Compose driver. Under the hood explots `docker
-  compose` with multiple context support to bring containers/tasks up.
+  Creates, authorises and destroyes spaces.
   """
 
-  defstruct driver: %Compose{}
+  defstruct [:dir, :driver, :data, :token]
+
+  @driver ECS
 
   @rsa_pub_b64 "rsa.pub.b64"
   @rsa "rsa"
-  @flexi_env "flexi.env"
-  @gateway_port 8080
+  @flexi_env "env"
 
   defp find_executable(name) do
     :flex
@@ -26,7 +26,7 @@ defmodule Space do
     end
   end
 
-  def clone(ctx, old, new) do
+  def clone(old, new) do
     with {:ok, _files} = File.cp_r(old, new),
          cmd = find_executable("keygen"),
          # Does not have any reason not to work. If it does not, crash - no
@@ -36,14 +36,14 @@ defmodule Space do
          envpath = Path.join([new, @flexi_env]),
          {:ok, env} <- File.read(envpath),
          newenv = Regex.replace(~r/PUBKEY=/, env, "PUBKEY=" <> key),
-         :ok <- File.write(envpath, newenv) do
-      driver = %Compose{dir: new, prj: Path.basename(new), ctx: ctx}
-      {:ok, %__MODULE__{driver: driver}}
+         :ok <- File.write(envpath, newenv),
+         {:ok, client} <- @driver.client(new) do
+      {:ok, %__MODULE__{dir: new, driver: @driver, data: client}}
     end
   end
 
-  def authorise(%__MODULE__{driver: d}, addr) do
-    keypath = Path.join([d.dir, @rsa])
+  def authorise(dir, addr) do
+    keypath = Path.join([dir, @rsa])
     cmd = find_executable("authorise")
     {rawtoken, code} = System.shell("#{cmd} -a #{addr} -k #{keypath} 2>/dev/null")
 
@@ -53,21 +53,40 @@ defmodule Space do
     end
   end
 
-  def recover(ctx, dir) do
-    driver = %Compose{ctx: ctx, prj: Path.basename(dir), dir: dir}
-    {:ok, %__MODULE__{driver: driver}}
-  end
-
-  def up(s = %__MODULE__{driver: d}, logfun \\ &IO.puts/1) do
-    with :ok <- Compose.up(d, logfun),
-         {:ok, addr} <- Compose.gateway(d, @gateway_port),
-         {:ok, token} <- authorise(s, addr) do
-      {:ok, token}
+  def recover_data(dir) do
+    with {:ok, client} <- @driver.client(dir) do
+      {:ok, %__MODULE__{dir: dir, driver: @driver, data: client}}
     end
   end
 
-  def addr(%__MODULE__{driver: d}, port \\ @gateway_port), do: Compose.gateway(d, port)
-  def down(%__MODULE__{driver: d}, logfun \\ &IO.puts/1), do: Compose.down(d, logfun)
-  def logs(%__MODULE__{driver: d}, dev \\ :stdio), do: Compose.logs(d, dev)
-  def ps(%__MODULE__{driver: d}), do: Compose.ps(d)
+  def recover(dir) do
+    with {:ok, client} <- @driver.client(dir),
+         envpath = Path.join([dir, @flexi_env]),
+         {:ok, env} = File.read(envpath),
+         raw = Regex.run(~r/TOKEN=.*/, env, [captures: :first]),
+         token = String.trim_leading(raw, "TOKEN=") do
+      if token == nil do
+        {:error, "could not extract TOKEN from env"}
+      else
+        {:ok, %__MODULE__{dir: dir, driver: @driver, data: client, token: token}}
+      end
+    end
+  end
+
+  def up(s = %__MODULE__{driver: driver}, logfun \\ &IO.puts/1) do
+    with :ok <- driver.up(s.data, logfun),
+         {:ok, addr} <- driver.gateway_addr(s.data),
+         {:ok, token} <- authorise(s, addr),
+         envpath = Path.join([s.dir, @flexi_env]),
+         {:ok, env} <- File.read(envpath),
+         newenv = env <> "\nTOKEN="<>token<>"\n",
+         :ok <- File.write(envpath, newenv) do
+      {:ok, %__MODULE__{s | token: token}}
+    end
+  end
+
+  def addr(s = %__MODULE__{}), do: s.driver.gateway_addr(s.data)
+  def down(s = %__MODULE__{}, logfun \\ &IO.puts/1), do: s.driver.down(s.data, logfun)
+  def logs(s = %__MODULE__{}, dev \\ :stdio), do: s.driver.logs(s.data, dev)
+  def info(s = %__MODULE__{}), do: s.driver.info(s.data)
 end
