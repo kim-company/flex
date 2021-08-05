@@ -66,24 +66,24 @@ defmodule Flex do
     if have != @version do
       {:error, "incompatible flexi version: want #{@version}, have #{have}"}
     else
-      adapter = {Tesla.Adapter.Mint, [timeout: 1000 * 30]}
+      adapter = {Tesla.Adapter.Hackney, [timeout: 1000 * 5]}
       {:ok, Tesla.client(middleware, adapter)}
     end
   end
 
   defp rollback(dir, logfun) do
     with {:ok, space} <- Space.recover_data(dir),
-         :ok <- Space.down(space, logfun),
+         :ok <- Space.down(space, "rollback after creation failure", logfun),
          {:ok, _files} <- File.rm_rf(dir) do
       :ok
     end
   end
 
-  def new(old, new, logfun \\ &IO.puts/1) do
+  def new(id, old, new, logfun \\ &IO.puts/1) do
     tic = Time.utc_now()
 
     with {:ok, space} <- Space.clone(old, new),
-         {:ok, space} <- Space.up(space, logfun),
+         {:ok, space} <- Space.up(space, id, logfun),
          {:ok, client} <- client(space.token),
          :ok = waithealthy(client, @health_retries, logfun) do
       diff = Time.diff(Time.utc_now(), tic, :second)
@@ -142,7 +142,7 @@ defmodule Flex do
   def destroy(%__MODULE__{space: space}, logfun \\ &IO.puts/1) do
     tic = Time.utc_now()
 
-    with :ok <- Space.down(space, logfun),
+    with :ok <- Space.down(space, "destroy action requested", logfun),
          {:ok, _files} <- File.rm_rf(space.dir) do
       diff = Time.diff(Time.utc_now(), tic, :second)
       logfun.("flex dir=#{space.dir} addr=#{token_addr!(space.token)} destroyed in #{diff}s")

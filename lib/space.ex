@@ -5,11 +5,15 @@ defmodule Space do
 
   defstruct [:dir, :driver, :data, :token]
 
-  @driver ECS
+  @driver Driver.AWS
 
   @rsa_pub_b64 "rsa.pub.b64"
   @rsa "rsa"
   @flexi_env "env"
+  @flexi_vars "vars.json"
+
+  def env_path(dir), do: Path.join([dir, @flexi_env])
+  def vars_path(dir), do: Path.join([dir, @flexi_vars])
 
   defp find_executable(name) do
     :flex
@@ -33,7 +37,7 @@ defmodule Space do
          # problem.
          {_, 0} = System.shell("#{cmd} 2>/dev/null", cd: new),
          {:ok, key} <- readkey(new, @rsa_pub_b64),
-         envpath = Path.join([new, @flexi_env]),
+         envpath = env_path(new),
          {:ok, env} <- File.read(envpath),
          newenv = Regex.replace(~r/PUBKEY=/, env, "PUBKEY=" <> key),
          :ok <- File.write(envpath, newenv),
@@ -61,7 +65,7 @@ defmodule Space do
 
   def recover(dir) do
     with {:ok, client} <- @driver.client(dir),
-         envpath = Path.join([dir, @flexi_env]),
+         envpath = env_path(dir),
          {:ok, env} = File.read(envpath),
          raw = Regex.run(~r/TOKEN=.*/, env, [captures: :first]),
          token = String.trim_leading(raw, "TOKEN=") do
@@ -73,11 +77,12 @@ defmodule Space do
     end
   end
 
-  def up(s = %__MODULE__{driver: driver}, logfun \\ &IO.puts/1) do
-    with :ok <- driver.up(s.data, logfun),
+  def up(s = %__MODULE__{driver: driver}, id, logfun \\ &IO.puts/1) do
+    with {:ok, newdata} <- driver.up(s.data, id, logfun),
+         s = %{s | data: newdata},
          {:ok, addr} <- driver.gateway_addr(s.data),
-         {:ok, token} <- authorise(s, addr),
-         envpath = Path.join([s.dir, @flexi_env]),
+         {:ok, token} <- authorise(s.dir, addr),
+         envpath = env_path(s.dir),
          {:ok, env} <- File.read(envpath),
          newenv = env <> "\nTOKEN="<>token<>"\n",
          :ok <- File.write(envpath, newenv) do
@@ -85,8 +90,11 @@ defmodule Space do
     end
   end
 
+  def down(s = %__MODULE__{}, reason, logfun \\ &IO.puts/1) do
+    s.driver.down(s.data, reason, logfun)
+  end
+
   def addr(s = %__MODULE__{}), do: s.driver.gateway_addr(s.data)
-  def down(s = %__MODULE__{}, logfun \\ &IO.puts/1), do: s.driver.down(s.data, logfun)
   def logs(s = %__MODULE__{}, dev \\ :stdio), do: s.driver.logs(s.data, dev)
   def info(s = %__MODULE__{}), do: s.driver.info(s.data)
 end

@@ -1,8 +1,18 @@
 {
+  "cluster_arn": {
+    "sensitive": false,
+    "type": "string",
+    "value": "arn:aws:ecs:eu-west-1:327134327116:cluster/livesub"
+  },
   "gw_port": {
     "sensitive": false,
     "type": "number",
     "value": 8080
+  },
+  "main_container_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "livesub"
   },
   "sec_group_id": {
     "sensitive": false,
@@ -24,7 +34,7 @@
   "td_arn": {
     "sensitive": false,
     "type": "string",
-    "value": "arn:aws:ecs:eu-west-1:327134327116:task-definition/livesub:6"
+    "value": "arn:aws:ecs:eu-west-1:327134327116:task-definition/livesub:7"
   },
   "vpc_id": {
     "sensitive": false,
@@ -32,3 +42,4 @@
     "value": "vpc-dc614fba"
   }
 }
+

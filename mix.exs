@@ -23,12 +23,15 @@ defmodule Flex.MixProject do
   def application, do: []
 
   # Run "mix help deps" to learn about dependencies.
+  # TODO: either hackney or httpoison, not both please
   defp deps do
     [
       {:tesla, "~> 1.4.1"},
       {:jason, "~> 1.2"},
-      {:mint, "~> 1.0"},
-      {:elixir_make, "~> 0.4", runtime: false}
+      {:aws, "~> 0.8"},
+      {:hackney, "~> 1.10"},
+      {:httpoison, "~> 1.6"},
+      {:elixir_make, "~> 0.4", runtime: false},
     ]
   end
 end
