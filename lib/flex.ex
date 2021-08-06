@@ -99,8 +99,6 @@ defmodule Flex do
 
   def recover(dir, logfun \\ &IO.puts/1) do
     with {:ok, space} <- Space.recover(dir),
-         {:ok, addr} <- Space.addr(space),
-         {:ok, space} <- Space.authorise(space, addr),
          {:ok, client} <- client(space.token),
          :ok = waithealthy(client, @health_retries / 2, logfun) do
       {:ok, %__MODULE__{client: client, space: space}}

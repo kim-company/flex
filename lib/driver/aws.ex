@@ -10,6 +10,11 @@ defmodule Driver.AWS do
     id = System.get_env(@aws_access_key_id)
     secret = System.get_env(@aws_secret_access_key)
     region = System.get_env(@aws_region)
+
+    if !id || !secret || ! region do
+      raise "client: AWS environment credentials are missing"
+    end
+
     AWS.Client.create(id, secret, region)
   end
 
@@ -237,18 +242,26 @@ defmodule Driver.AWS do
     end
   end
 
-  def gateway_addr(d = %__MODULE__{}) do
-    with {:ok, task} <- describe_task(d.cluster, d.task_arn),
-         {:ok, ip} <- take_public_ip(task.net_iface.id) do
-      {:ok, "#{ip}:#{d.port}"}
+  # TODO: this might be cached within module's struct. As it is stateless
+  # though, some function has to store the information there when returning it
+  # to callers.
+  def public_ip(d = %__MODULE__{}) do
+    with {:ok, task} <- describe_task(d.cluster, d.task_arn) do
+      take_public_ip(task.net_iface.id)
     end
   end
+
+  def addr(d = %__MODULE__{}, port) do
+    with {:ok, ip} <- public_ip(d) do
+      {:ok, "#{ip}:#{port}"}
+    end
+  end
+
+  def gateway_addr(d = %__MODULE__{}), do: addr(d, d.port)
 
   def logs(_ = %__MODULE__{}, _) do
     # TODO: this one needs cloudwatch but might be very useful for fast
     # debugging.
     {:error, "logs: request not implemented"}
   end
-
-  def info(%__MODULE__{cluster: cluster, task_arn: arn}), do: describe_task(cluster, arn)
 end

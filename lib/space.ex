@@ -67,7 +67,7 @@ defmodule Space do
     with {:ok, client} <- @driver.client(dir),
          envpath = env_path(dir),
          {:ok, env} = File.read(envpath),
-         raw = Regex.run(~r/TOKEN=.*/, env, [captures: :first]),
+         [raw | _ ] = Regex.run(~r/TOKEN=.*/, env, [captures: :first]),
          token = String.trim_leading(raw, "TOKEN=") do
       if token == nil do
         {:error, "could not extract TOKEN from env"}
@@ -95,6 +95,4 @@ defmodule Space do
   end
 
   def addr(s = %__MODULE__{}), do: s.driver.gateway_addr(s.data)
-  def logs(s = %__MODULE__{}, dev \\ :stdio), do: s.driver.logs(s.data, dev)
-  def info(s = %__MODULE__{}), do: s.driver.info(s.data)
 end
