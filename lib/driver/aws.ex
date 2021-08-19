@@ -231,7 +231,7 @@ defmodule Driver.AWS do
     data = %{
       "NetworkInterfaceId.1" => eni_id,
     }
-    case AWS.EC2.describe_network_interfaces(client(), data) do
+    case Driver.AWS.EC2.describe_network_interfaces(client(), data) do
       {:ok, %{"DescribeNetworkInterfacesResponse" => %{"networkInterfaceSet" => %{"item" => interface}}}, _http} ->
         ip =
           interface

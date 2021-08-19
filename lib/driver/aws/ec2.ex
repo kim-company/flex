@@ -1,4 +1,4 @@
-defmodule AWS.EC2 do
+defmodule Driver.AWS.EC2 do
   def describe_network_interfaces(client, input, options \\ []) do
     request(client, "DescribeNetworkInterfaces", input, options)
   end
