@@ -31,7 +31,7 @@ defmodule Space do
   end
 
   def clone(old, new) do
-    with {:ok, _files} = File.cp_r(old, new),
+    with {:ok, _files} <- File.cp_r(old, new),
          cmd = find_executable("keygen"),
          # Does not have any reason not to work. If it does not, crash - no
          # problem.
@@ -43,6 +43,9 @@ defmodule Space do
          :ok <- File.write(envpath, newenv),
          {:ok, client} <- @driver.client(new) do
       {:ok, %__MODULE__{dir: new, driver: @driver, data: client}}
+    else
+      {:error, :enoent, missing} -> {:error, "#{missing} not found"}
+      {:error, reason} -> {:error, reason}
     end
   end
 
