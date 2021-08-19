@@ -94,5 +94,5 @@ defmodule Space do
     s.driver.down(s.data, reason, logfun)
   end
 
-  def addr(s = %__MODULE__{}), do: s.driver.gateway_addr(s.data)
+  def public_ip(s = %__MODULE__{}), do: s.driver.public_ip(s.data)
 end

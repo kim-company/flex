@@ -195,5 +195,5 @@ defmodule Flex do
     end
   end
 
-  def addr(%__MODULE__{space: space}), do: Space.addr(space)
+  def public_ip(%__MODULE__{space: space}), do: Space.public_ip(space)
 end
