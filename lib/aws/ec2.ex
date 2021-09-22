@@ -1,4 +1,10 @@
-defmodule Driver.AWS.EC2 do
+defmodule AWS.EC2 do
+  @moduledoc """
+  https://github.com/aws-beam/aws-elixir does not include an EC2 client as of
+  Wed Sep 22 14:36:47 CEST 2021. If this functionality is inlcuded, remove this
+  module.
+  """
+
   def describe_network_interfaces(client, input, options \\ []) do
     request(client, "DescribeNetworkInterfaces", input, options)
   end

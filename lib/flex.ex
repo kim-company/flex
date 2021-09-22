@@ -1,199 +1,187 @@
 defmodule Flex do
-  @moduledoc """
-  Flex is an HTTP client that speaks with a flexi gateway. A client instance
-  can be obtained from a gateway token. It is usually computed using
-  Flexi's admin/authorise tool, or through the Space module.
+  use Bitwise
+  require Logger
 
-  Use Space to bring up/down a Flexi space (i.e. Task or Container).
+  # TODO(phil): find a clearer way to describe this stuff. These are the type
+  # specs/info of the associated struct fields.
+  # - tags: [%{key: "key", value: "value"}]
+  # - env: [%{key: "key", value: "value"}]
+  # - container_name: when overriding environment vars, the container name has
+  # to be specified.
+  defstruct [:id, :task_definition, :subnet_ids, :security_group_ids, :cluster_arn, :tags, :env, :container_name]
+
+  # See eventual consistency guidelines at
+  # https://docs.aws.amazon.com/cli/latest/reference/ecs/run-task.html#run-task
+  @backoff_wait_base_secs 2
+
+  # Mind that doing 5 attempts means blocking for 124 seconds.
+  # 126 = Enum.map(0..5, fn v -> 2 <<< v end) |> Enum.sum()
+  @backoff_max_attempts 5
+
+  @aws_access_key_id "AWS_ACCESS_KEY_ID"
+  @aws_secret_access_key "AWS_SECRET_ACCESS_KEY"
+  @aws_region "AWS_REGION"
+
+  defp client() do
+    id = System.get_env(@aws_access_key_id)
+    secret = System.get_env(@aws_secret_access_key)
+    region = System.get_env(@aws_region)
+
+    if !id || !secret || ! region do
+      raise "client: AWS environment credentials are missing"
+    end
+
+    AWS.Client.create(id, secret, region)
+  end
+
+  defp find_detail([], name, :fail), do: {:error, "could not find #{name} within task detail attachments"}
+  defp find_detail([], _, default), do: {:ok, default}
+  defp find_detail([h | t], name, default) do
+    case Map.get(h, "name") do
+      ^name -> {:ok, Map.get(h, "value")}
+      _ -> find_detail(t, name, default)
+    end
+  end
+
+  defp take_net_iface(%{"attachments" => [%{"details" => details} | []]}) do
+    with {:ok, pip} <- find_detail(details, "privateIPv4Address", nil),
+         {:ok, pdns} <- find_detail(details, "privateDnsName", nil),
+         {:ok, iface} <- find_detail(details, "networkInterfaceId", nil) do
+      {:ok, %{
+        private_ip: pip,
+        private_dns: pdns,
+        id: iface,
+      }}
+    end
+  end
+
+  defp take_task_info(data) do
+    with {:ok, iface} <- take_net_iface(data) do
+      {:ok, %{
+        desired_status: Map.get(data, "desiredStatus"),
+        task_arn: Map.get(data, "taskArn"),
+        last_status: Map.get(data, "lastStatus"),
+        net_iface: iface,
+      }}
+    end
+  end
+
+  defp parse_error(%{"Response" => %{"Errors" => %{"Error" => %{"Message" => message}}}}), do: {:error, message}
+  defp parse_error({:unexpected_response, %{body: json}}) do
+    with {:ok, body} <- Jason.decode(json) do
+      {:error, Map.get(body, "message")}
+    else
+      _ -> {:error, "something was wrong with the AWS request/response"}
+    end
+  end
+  defp parse_error(error), do: {:error, error}
+
+  def describe(cluster_arn, task_arn) do
+    data = %{
+      cluster: cluster_arn,
+      tasks: [task_arn],
+    }
+    case AWS.ECS.describe_tasks(client(), data) do
+      {:ok, %{"failures" => [], "tasks" => [data | []]}, _} -> take_task_info(data)
+      {:error, error} -> parse_error(error)
+    end
+  end
+
+  @doc """
+  run a fargate task, non blocking. To ensure the task is actuall running, poll
+  its description with `describe`.
   """
+  def run(opts = %__MODULE__{}) do
+    data = %{
+      tags: opts.tags,
+      name: opts.id,
+      launchType: "FARGATE",
+      taskDefinition: opts.task_definition,
+      cluster: opts.cluster_arn,
+      networkConfiguration: %{
+        awsvpcConfiguration: %{
+          assignPublicIp: "ENABLED",
+          securityGroups: opts.security_group_ids,
+          subnets: opts.subnet_ids,
+        }
+      },
+      overrides: %{
+        containerOverrides: [
+          %{
+            name: opts.container_name,
+            environment: opts.env,
+          }
+        ]
+      }
+    }
 
-  # Flexi gateway API version
-  @version "3"
-  @health_retries 8
-  @health_wait 2000
-
-  defstruct client: nil, space: nil
-
-  defp tokenbody!(token) do
-    token
-    |> String.split(".")
-    |> Enum.at(1)
-    |> Base.url_decode64!(padding: false)
-    |> Jason.decode!()
-  end
-
-  def token_version!(token) do
-    token
-    |> tokenbody!()
-    |> Map.get("version")
-  end
-
-  def token_addr!(token) do
-    token
-    |> tokenbody!()
-    |> Map.get("addr")
-  end
-
-  defp waithealthy(_, 0, _), do: {:error, "healthcheck failed"}
-
-  defp waithealthy(client, tries, logfun) do
-    logfun.("healthcheck ##{tries} on /_health")
-
-    # TODO: timeout might be more strict here.
-    case Tesla.get(client, "_health") do
-      {:ok, %{status: 200}} ->
-        :ok
-
-      _ ->
-        logfun.("healthcheck ##{tries} failed: retring in #{@health_wait / 1000}s")
-        Process.sleep(@health_wait)
-        waithealthy(client, tries - 1, logfun)
+    # See: https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_RunTask.html
+    case AWS.ECS.run_task(client(), data) do
+      {:ok, %{"failures" => [], "tasks" => [data | []]}, _} -> take_task_info(data)
+      {:error, error} -> parse_error(error)
     end
   end
 
-  def client(token) do
-    # TODO: do it safely
-    have = token_version!(token)
-    baseurl = "http://#{token_addr!(token)}"
+  defp backoff_wait_secs(n), do: @backoff_wait_base_secs <<< n
 
-    middleware = [
-      # TODO: https
-      {Tesla.Middleware.BaseUrl, baseurl},
-      {Tesla.Middleware.Headers, [{"authorization", "Bearer #{token}"}]},
-      Tesla.Middleware.JSON
-    ]
-
-    if have != @version do
-      {:error, "incompatible flexi version: want #{@version}, have #{have}"}
-    else
-      adapter = {Tesla.Adapter.Hackney, [timeout: 1000 * 5]}
-      {:ok, Tesla.client(middleware, adapter)}
+  defp wait_status(_, _, desired, max_attempts, attempts) when attempts >= max_attempts do
+    {:error, "wait status: task did not reach status #{desired} in #{max_attempts} calls"}
+  end
+  defp wait_status(cluster_arn, task_arn, desired, max_attempts, attempt) do
+    case describe(cluster_arn, task_arn) do
+      {:ok, %{desired_status: ^desired, last_status: ^desired}} -> :ok
+      {:ok, %{desired_status: ^desired, last_status: status}} ->
+        wait = backoff_wait_secs(attempt)
+        Logger.info("wait status (attempt=#{attempt+1}, wait=#{wait}s): have #{status}, want #{desired}")
+        Process.sleep(wait*1000)
+        wait_status(cluster_arn, task_arn, desired, max_attempts, attempt-1)
+      {:ok, %{desired_status: other, last_status: _}} ->
+        {:error, "wait status: desired status switched to #{other}"}
+      {:error, reason} -> {:error, "wait status: #{reason}"}
     end
   end
 
-  defp rollback(dir, logfun) do
-    with {:ok, space} <- Space.recover_data(dir),
-         :ok <- Space.down(space, "rollback after creation failure", logfun),
-         {:ok, _files} <- File.rm_rf(dir) do
-      :ok
+  @doc """
+  Waits until `desired_status` is both the `last_status` and `desired_status`
+  of the specified task.  Possible status values are described at
+  https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-lifecycle.html
+  """
+  def wait_status(cluster_arn, task_arn, desired_status) do
+    wait_status(cluster_arn, task_arn, desired_status, @backoff_max_attempts, 0)
+  end
+
+  @doc "Stops a task. `reason` will be visibile in the console"
+  def stop(cluster_arn, task_arn, reason) do
+    data = %{
+      cluster: cluster_arn,
+      task: task_arn,
+      reason: reason,
+    }
+    case AWS.ECS.stop_task(client(), data) do
+      {:ok, %{"task" => data}, _} -> take_task_info(data)
+      {:error, error} -> parse_error(error)
     end
   end
 
-  def new(id, old, new, logfun \\ &IO.puts/1) do
-    tic = Time.utc_now()
-
-    with {:ok, space} <- Space.clone(old, new),
-         {:ok, space} <- Space.up(space, id, logfun),
-         {:ok, client} <- client(space.token),
-         :ok = waithealthy(client, @health_retries, logfun) do
-      diff = Time.diff(Time.utc_now(), tic, :second)
-      logfun.("flex dir=#{new} addr=#{token_addr!(space.token)} created in #{diff}s")
-      {:ok, %__MODULE__{client: client, space: space}}
-    else
-      {:error, reason} ->
-        logfun.("Rolling back after creation failure: #{reason}")
-        rollback(new, logfun)
-        {:error, reason}
+  defp take_public_ip(eni_id) do
+    data = %{
+      "NetworkInterfaceId.1" => eni_id,
+    }
+    case AWS.EC2.describe_network_interfaces(client(), data) do
+      {:ok, %{"DescribeNetworkInterfacesResponse" => %{"networkInterfaceSet" => %{"item" => interface}}}, _http} ->
+        ip =
+          interface
+          |> Map.get("association", %{})
+          |> Map.get("publicIp")
+        {:ok, ip}
+      {:error, error} -> parse_error(error)
     end
   end
 
-  def recover(dir, logfun \\ &IO.puts/1) do
-    with {:ok, space} <- Space.recover(dir),
-         {:ok, client} <- client(space.token),
-         :ok = waithealthy(client, @health_retries / 2, logfun) do
-      {:ok, %__MODULE__{client: client, space: space}}
-    else
-      {:error, reason} ->
-        logfun.("rolling back after recover failure: #{reason}")
-        rollback(dir, logfun)
-        {:error, reason}
+  @doc "Retrieves the public IPv4 of the specified task"
+  def public_ip(cluster_arn, task_arn) do
+    with {:ok, task} <- describe(cluster_arn, task_arn) do
+      take_public_ip(task.net_iface.id)
     end
   end
-
-  def recover_all(paths, logfun \\ &IO.puts/1) do
-    {ok, broken} =
-      paths
-      |> Stream.map(fn path ->
-        case recover(path, logfun) do
-          {:ok, l} -> {:ok, l}
-          {:error, reason} -> {:error, reason, path}
-        end
-      end)
-      |> Enum.split_with(fn elem ->
-        case elem do
-          {:ok, _} -> true
-          {:error, _, _} -> false
-        end
-      end)
-
-    ok = Enum.map(ok, fn {:ok, l} -> l end)
-
-    broken =
-      Enum.map(broken, fn {:error, reason, path} ->
-        logfun.("warning: found broken livesub folder at #{path}: #{reason}")
-        {reason, path}
-      end)
-
-    {ok, broken}
-  end
-
-  def destroy(%__MODULE__{space: space}, logfun \\ &IO.puts/1) do
-    tic = Time.utc_now()
-
-    with :ok <- Space.down(space, "destroy action requested", logfun),
-         {:ok, _files} <- File.rm_rf(space.dir) do
-      diff = Time.diff(Time.utc_now(), tic, :second)
-      logfun.("flex dir=#{space.dir} addr=#{token_addr!(space.token)} destroyed in #{diff}s")
-      :ok
-    end
-  end
-
-  defp httperror(status, %{"error" => error}), do: "status #{status}: #{error}"
-  defp httperror(status, _), do: "status #{status}"
-
-  def read(%__MODULE__{client: client}, file) do
-    case Tesla.get(client, file) do
-      {:error, reason} -> {:error, %{message: reason}}
-      {:ok, %{status: 200, body: body}} -> {:ok, body}
-      {:ok, %{status: status, body: body}} -> {:error, "read: #{httperror(status, body)}"}
-    end
-  end
-
-  def write(%__MODULE__{client: client}, file, body) do
-    case Tesla.put(client, file, body) do
-      {:error, reason} -> {:error, %{message: reason}}
-      {:ok, %{status: 200}} -> :ok
-      {:ok, %{status: status, body: body}} -> {:error, "write: #{httperror(status, body)}"}
-    end
-  end
-
-  defp startstop(flex, action) do
-    case read(flex, action) do
-      {:ok, _body} -> :ok
-      {:error, error} -> {:error, error}
-    end
-  end
-
-  def start(flex = %__MODULE__{}), do: startstop(flex, "start")
-  def stop(flex = %__MODULE__{}), do: startstop(flex, "stop")
-  def help(flex = %__MODULE__{}), do: read(flex, "help")
-
-  def is_running?(flex = %Flex{}) do
-    case help(flex) do
-      {:ok, h} ->
-        tool =
-          h
-          |> Map.get("data", %{})
-          |> Map.get("tool", %{})
-
-        pid = Map.get(tool, "pid", nil)
-        ec = Map.get(tool, "exit_code", nil)
-        pid != nil && ec == nil
-
-      _other ->
-        false
-    end
-  end
-
-  def public_ip(%__MODULE__{space: space}), do: Space.public_ip(space)
 end
