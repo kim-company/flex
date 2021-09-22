@@ -8,7 +8,16 @@ defmodule Flex do
   # - env: [%{key: "key", value: "value"}]
   # - container_name: when overriding environment vars, the container name has
   # to be specified.
-  defstruct [:id, :task_definition, :subnet_ids, :security_group_ids, :cluster_arn, :tags, :env, :container_name]
+  defstruct [
+    :id,
+    :task_definition,
+    :subnet_ids,
+    :security_group_ids,
+    :cluster_arn,
+    :tags,
+    :env,
+    :container_name
+  ]
 
   # See eventual consistency guidelines at
   # https://docs.aws.amazon.com/cli/latest/reference/ecs/run-task.html#run-task
@@ -27,15 +36,18 @@ defmodule Flex do
     secret = System.get_env(@aws_secret_access_key)
     region = System.get_env(@aws_region)
 
-    if !id || !secret || ! region do
+    if !id || !secret || !region do
       raise "client: AWS environment credentials are missing"
     end
 
     AWS.Client.create(id, secret, region)
   end
 
-  defp find_detail([], name, :fail), do: {:error, "could not find #{name} within task detail attachments"}
+  defp find_detail([], name, :fail),
+    do: {:error, "could not find #{name} within task detail attachments"}
+
   defp find_detail([], _, default), do: {:ok, default}
+
   defp find_detail([h | t], name, default) do
     case Map.get(h, "name") do
       ^name -> {:ok, Map.get(h, "value")}
@@ -47,26 +59,30 @@ defmodule Flex do
     with {:ok, pip} <- find_detail(details, "privateIPv4Address", nil),
          {:ok, pdns} <- find_detail(details, "privateDnsName", nil),
          {:ok, iface} <- find_detail(details, "networkInterfaceId", nil) do
-      {:ok, %{
-        private_ip: pip,
-        private_dns: pdns,
-        id: iface,
-      }}
+      {:ok,
+       %{
+         private_ip: pip,
+         private_dns: pdns,
+         id: iface
+       }}
     end
   end
 
   defp take_task_info(data) do
     with {:ok, iface} <- take_net_iface(data) do
-      {:ok, %{
-        desired_status: Map.get(data, "desiredStatus"),
-        task_arn: Map.get(data, "taskArn"),
-        last_status: Map.get(data, "lastStatus"),
-        net_iface: iface,
-      }}
+      {:ok,
+       %{
+         desired_status: Map.get(data, "desiredStatus"),
+         task_arn: Map.get(data, "taskArn"),
+         last_status: Map.get(data, "lastStatus"),
+         net_iface: iface
+       }}
     end
   end
 
-  defp parse_error(%{"Response" => %{"Errors" => %{"Error" => %{"Message" => message}}}}), do: {:error, message}
+  defp parse_error(%{"Response" => %{"Errors" => %{"Error" => %{"Message" => message}}}}),
+    do: {:error, message}
+
   defp parse_error({:unexpected_response, %{body: json}}) do
     with {:ok, body} <- Jason.decode(json) do
       {:error, Map.get(body, "message")}
@@ -74,13 +90,15 @@ defmodule Flex do
       _ -> {:error, "something was wrong with the AWS request/response"}
     end
   end
+
   defp parse_error(error), do: {:error, error}
 
   def describe(cluster_arn, task_arn) do
     data = %{
       cluster: cluster_arn,
-      tasks: [task_arn],
+      tasks: [task_arn]
     }
+
     case AWS.ECS.describe_tasks(client(), data) do
       {:ok, %{"failures" => [], "tasks" => [data | []]}, _} -> take_task_info(data)
       {:error, error} -> parse_error(error)
@@ -102,14 +120,14 @@ defmodule Flex do
         awsvpcConfiguration: %{
           assignPublicIp: "ENABLED",
           securityGroups: opts.security_group_ids,
-          subnets: opts.subnet_ids,
+          subnets: opts.subnet_ids
         }
       },
       overrides: %{
         containerOverrides: [
           %{
             name: opts.container_name,
-            environment: opts.env,
+            environment: opts.env
           }
         ]
       }
@@ -127,17 +145,27 @@ defmodule Flex do
   defp wait_status(_, _, desired, max_attempts, attempts) when attempts >= max_attempts do
     {:error, "wait status: task did not reach status #{desired} in #{max_attempts} calls"}
   end
+
   defp wait_status(cluster_arn, task_arn, desired, max_attempts, attempt) do
     case describe(cluster_arn, task_arn) do
-      {:ok, %{desired_status: ^desired, last_status: ^desired}} -> :ok
+      {:ok, %{desired_status: ^desired, last_status: ^desired}} ->
+        :ok
+
       {:ok, %{desired_status: ^desired, last_status: status}} ->
         wait = backoff_wait_secs(attempt)
-        Logger.info("wait status (attempt=#{attempt+1}, wait=#{wait}s): have #{status}, want #{desired}")
-        Process.sleep(wait*1000)
-        wait_status(cluster_arn, task_arn, desired, max_attempts, attempt-1)
+
+        Logger.info(
+          "wait status (attempt=#{attempt + 1}, wait=#{wait}s): have #{status}, want #{desired}"
+        )
+
+        Process.sleep(wait * 1000)
+        wait_status(cluster_arn, task_arn, desired, max_attempts, attempt - 1)
+
       {:ok, %{desired_status: other, last_status: _}} ->
         {:error, "wait status: desired status switched to #{other}"}
-      {:error, reason} -> {:error, "wait status: #{reason}"}
+
+      {:error, reason} ->
+        {:error, "wait status: #{reason}"}
     end
   end
 
@@ -155,8 +183,9 @@ defmodule Flex do
     data = %{
       cluster: cluster_arn,
       task: task_arn,
-      reason: reason,
+      reason: reason
     }
+
     case AWS.ECS.stop_task(client(), data) do
       {:ok, %{"task" => data}, _} -> take_task_info(data)
       {:error, error} -> parse_error(error)
@@ -165,16 +194,23 @@ defmodule Flex do
 
   defp take_public_ip(eni_id) do
     data = %{
-      "NetworkInterfaceId.1" => eni_id,
+      "NetworkInterfaceId.1" => eni_id
     }
+
     case AWS.EC2.describe_network_interfaces(client(), data) do
-      {:ok, %{"DescribeNetworkInterfacesResponse" => %{"networkInterfaceSet" => %{"item" => interface}}}, _http} ->
+      {:ok,
+       %{
+         "DescribeNetworkInterfacesResponse" => %{"networkInterfaceSet" => %{"item" => interface}}
+       }, _http} ->
         ip =
           interface
           |> Map.get("association", %{})
           |> Map.get("publicIp")
+
         {:ok, ip}
-      {:error, error} -> parse_error(error)
+
+      {:error, error} ->
+        parse_error(error)
     end
   end
 

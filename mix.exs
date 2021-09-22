@@ -19,7 +19,7 @@ defmodule Flex.MixProject do
     [
       {:jason, "~> 1.2"},
       {:aws, "~> 0.8"},
-      {:httpoison, "~> 1.6"},
+      {:httpoison, "~> 1.6"}
     ]
   end
 end
