@@ -75,7 +75,7 @@ defmodule Flex do
          desired_status: Map.get(data, "desiredStatus"),
          task_arn: Map.get(data, "taskArn"),
          last_status: Map.get(data, "lastStatus"),
-         net_iface: iface
+         network_interface: iface
        }}
     end
   end
@@ -217,7 +217,7 @@ defmodule Flex do
   @doc "Retrieves the public IPv4 of the specified task"
   def public_ip(cluster_arn, task_arn) do
     with {:ok, task} <- describe(cluster_arn, task_arn) do
-      take_public_ip(task.net_iface.id)
+      take_public_ip(task.network_interface.id)
     end
   end
 end
