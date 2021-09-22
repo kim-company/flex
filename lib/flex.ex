@@ -1,5 +1,5 @@
 defmodule Flex do
-  use Bitwise
+  use Bitwise, only_operators: true
   require Logger
 
   # TODO(phil): find a clearer way to describe this stuff. These are the type
