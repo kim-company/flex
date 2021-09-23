@@ -23,7 +23,7 @@ defmodule Flex do
   # https://docs.aws.amazon.com/cli/latest/reference/ecs/run-task.html#run-task
   @backoff_wait_base_secs 2
 
-  # Mind that doing 5 attempts means blocking for 124 seconds.
+  # Mind that doing 5 attempts means blocking for 126 seconds.
   # 126 = Enum.map(0..5, fn v -> 2 <<< v end) |> Enum.sum()
   @backoff_max_attempts 5
 
