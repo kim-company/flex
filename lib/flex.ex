@@ -27,18 +27,87 @@ defmodule Flex do
   # 126 = Enum.map(0..5, fn v -> 2 <<< v end) |> Enum.sum()
   @backoff_max_attempts 5
 
-  @aws_access_key_id "AWS_ACCESS_KEY_ID"
-  @aws_secret_access_key "AWS_SECRET_ACCESS_KEY"
-  @aws_region "AWS_REGION"
+  @doc """
+  run a fargate task, non blocking. To ensure the task is actuall running, poll
+  its description with `describe`.
+  """
+  def run(opts = %__MODULE__{}) do
+    data = %{
+      tags: opts.tags,
+      name: opts.id,
+      launchType: "FARGATE",
+      taskDefinition: opts.task_definition,
+      cluster: opts.cluster_arn,
+      networkConfiguration: %{
+        awsvpcConfiguration: %{
+          assignPublicIp: "ENABLED",
+          securityGroups: opts.security_group_ids,
+          subnets: opts.subnet_ids
+        }
+      },
+      overrides: %{
+        containerOverrides: [
+          %{
+            name: opts.container_name,
+            environment: opts.env
+          }
+        ]
+      }
+    }
+
+    # See: https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_RunTask.html
+    case AWS.ECS.run_task(client(), data) do
+      {:ok, %{"failures" => [], "tasks" => [data | []]}, _} -> take_task_info(data)
+      {:error, error} -> parse_error(error)
+    end
+  end
+
+  def describe(cluster_arn, task_arn) do
+    data = %{
+      cluster: cluster_arn,
+      tasks: [task_arn]
+    }
+
+    case AWS.ECS.describe_tasks(client(), data) do
+      {:ok, %{"failures" => [], "tasks" => [data | []]}, _} -> take_task_info(data)
+      {:error, error} -> parse_error(error)
+    end
+  end
+
+  @doc """
+  Waits until `desired_status` is both the `last_status` and `desired_status`
+  of the specified task.  Possible status values are described at
+  https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-lifecycle.html
+  """
+  def wait_status(cluster_arn, task_arn, desired_status) do
+    wait_status(cluster_arn, task_arn, desired_status, @backoff_max_attempts, 0)
+  end
+
+  @doc "Stops a task. `reason` will be visibile in the console"
+  def stop(cluster_arn, task_arn, reason) do
+    data = %{
+      cluster: cluster_arn,
+      task: task_arn,
+      reason: reason
+    }
+
+    case AWS.ECS.stop_task(client(), data) do
+      {:ok, %{"task" => data}, _} -> take_task_info(data)
+      {:error, error} -> parse_error(error)
+    end
+  end
+
+  @doc "Retrieves the public IPv4 of the specified task"
+  def public_ip(cluster_arn, task_arn) do
+    with {:ok, task} <- describe(cluster_arn, task_arn) do
+      take_public_ip(task.network_interface.id)
+    end
+  end
 
   defp client() do
-    id = System.get_env(@aws_access_key_id)
-    secret = System.get_env(@aws_secret_access_key)
-    region = System.get_env(@aws_region)
-
-    if !id || !secret || !region do
-      raise "client: AWS environment credentials are missing"
-    end
+    id = Application.get_env(:flex, :access_key_id)
+    secret = Application.get_env(:flex, :secret_access_key)
+    region = Application.get_env(:flex, :region)
 
     AWS.Client.create(id, secret, region)
   end
@@ -93,53 +162,6 @@ defmodule Flex do
 
   defp parse_error(error), do: {:error, error}
 
-  def describe(cluster_arn, task_arn) do
-    data = %{
-      cluster: cluster_arn,
-      tasks: [task_arn]
-    }
-
-    case AWS.ECS.describe_tasks(client(), data) do
-      {:ok, %{"failures" => [], "tasks" => [data | []]}, _} -> take_task_info(data)
-      {:error, error} -> parse_error(error)
-    end
-  end
-
-  @doc """
-  run a fargate task, non blocking. To ensure the task is actuall running, poll
-  its description with `describe`.
-  """
-  def run(opts = %__MODULE__{}) do
-    data = %{
-      tags: opts.tags,
-      name: opts.id,
-      launchType: "FARGATE",
-      taskDefinition: opts.task_definition,
-      cluster: opts.cluster_arn,
-      networkConfiguration: %{
-        awsvpcConfiguration: %{
-          assignPublicIp: "ENABLED",
-          securityGroups: opts.security_group_ids,
-          subnets: opts.subnet_ids
-        }
-      },
-      overrides: %{
-        containerOverrides: [
-          %{
-            name: opts.container_name,
-            environment: opts.env
-          }
-        ]
-      }
-    }
-
-    # See: https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_RunTask.html
-    case AWS.ECS.run_task(client(), data) do
-      {:ok, %{"failures" => [], "tasks" => [data | []]}, _} -> take_task_info(data)
-      {:error, error} -> parse_error(error)
-    end
-  end
-
   defp backoff_wait_secs(n), do: @backoff_wait_base_secs <<< n
 
   defp wait_status(_, _, desired, max_attempts, attempts) when attempts >= max_attempts do
@@ -169,29 +191,6 @@ defmodule Flex do
     end
   end
 
-  @doc """
-  Waits until `desired_status` is both the `last_status` and `desired_status`
-  of the specified task.  Possible status values are described at
-  https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-lifecycle.html
-  """
-  def wait_status(cluster_arn, task_arn, desired_status) do
-    wait_status(cluster_arn, task_arn, desired_status, @backoff_max_attempts, 0)
-  end
-
-  @doc "Stops a task. `reason` will be visibile in the console"
-  def stop(cluster_arn, task_arn, reason) do
-    data = %{
-      cluster: cluster_arn,
-      task: task_arn,
-      reason: reason
-    }
-
-    case AWS.ECS.stop_task(client(), data) do
-      {:ok, %{"task" => data}, _} -> take_task_info(data)
-      {:error, error} -> parse_error(error)
-    end
-  end
-
   defp take_public_ip(eni_id) do
     data = %{
       "NetworkInterfaceId.1" => eni_id
@@ -211,13 +210,6 @@ defmodule Flex do
 
       {:error, error} ->
         parse_error(error)
-    end
-  end
-
-  @doc "Retrieves the public IPv4 of the specified task"
-  def public_ip(cluster_arn, task_arn) do
-    with {:ok, task} <- describe(cluster_arn, task_arn) do
-      take_public_ip(task.network_interface.id)
     end
   end
 end
