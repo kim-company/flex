@@ -196,7 +196,7 @@ defmodule Flex do
       "NetworkInterfaceId.1" => eni_id
     }
 
-    case AWS.EC2.describe_network_interfaces(client(), data) do
+    case Flex.EC2.describe_network_interfaces(client(), data) do
       {:ok,
        %{
          "DescribeNetworkInterfacesResponse" => %{"networkInterfaceSet" => %{"item" => interface}}
