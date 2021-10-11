@@ -154,7 +154,13 @@ defmodule Flex do
 
   defp parse_error({:unexpected_response, %{body: json}}) do
     with {:ok, body} <- Jason.decode(json) do
-      {:error, Map.get(body, "message")}
+      case Map.fetch(body, "message") do
+        {:ok, error} ->
+          {:error, error}
+
+        _ ->
+          {:error, Map.fetch!(body, "Message")}
+      end
     else
       _ -> {:error, "something was wrong with the AWS request/response"}
     end
