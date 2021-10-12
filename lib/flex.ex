@@ -137,6 +137,8 @@ defmodule Flex do
     end
   end
 
+  defp take_net_iface(%{"attachments" => []}), do: {:ok, nil}
+
   defp take_task_info(data) do
     with {:ok, iface} <- take_net_iface(data) do
       {:ok,
@@ -154,9 +156,9 @@ defmodule Flex do
 
   defp parse_error({:unexpected_response, %{body: json}}) do
     with {:ok, body} <- Jason.decode(json) do
-      {:error, Map.get(body, "message")}
-    else
-      _ -> {:error, "something was wrong with the AWS request/response"}
+      {:error,
+       body["message"] || body["Message"] ||
+         raise("Could not find message in body: #{inspect(body)}")}
     end
   end
 
