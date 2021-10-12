@@ -137,6 +137,8 @@ defmodule Flex do
     end
   end
 
+  defp take_net_iface(%{"attachments" => []}), do: {:ok, nil}
+
   defp take_task_info(data) do
     with {:ok, iface} <- take_net_iface(data) do
       {:ok,
