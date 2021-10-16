@@ -48,7 +48,7 @@ defmodule Flex.EC2 do
   end
 
   defp build_host(endpoint_prefix, %{region: region, endpoint: endpoint}) do
-    "#{endpoint_prefix}.#{region}.#{endpoint}"
+    "#{endpoint_prefix}.#{region}.#{endpoint || AWS.Client.default_endpoint()}"
   end
 
   defp build_url(host, %{:proto => proto, :port => port}) do
