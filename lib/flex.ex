@@ -69,7 +69,8 @@ defmodule Flex do
     }
 
     case AWS.ECS.describe_tasks(client(), data) do
-      {:ok, %{"failures" => [], "tasks" => [data | []]}, _} -> take_task_info(data)
+      {:ok, %{"failures" => [], "tasks" => [data]}, _} -> take_task_info(data)
+      {:ok, %{"failures" => [%{"reason" => "MISSING"}], "tasks" => []}, _} -> {:error, :not_found}
       {:error, error} -> parse_error(error)
     end
   end
