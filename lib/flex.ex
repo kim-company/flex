@@ -108,7 +108,7 @@ defmodule Flex do
 
       {:error, error} ->
         case parse_error(error) do
-          {:error, %{"error" => "\"The referenced task was not found\""}} -> :ok
+          {:error, "The referenced task was not found"} -> :ok
           error -> error
         end
     end
