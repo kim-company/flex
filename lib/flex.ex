@@ -27,10 +27,17 @@ defmodule Flex do
   # 126 = Enum.map(0..5, fn v -> 2 <<< v end) |> Enum.sum()
   @backoff_max_attempts 5
 
+  @type infos :: %{
+          desired_status: String.t(),
+          task_arn: String.t(),
+          last_status: String.t(),
+          network_interface: map
+        }
   @doc """
   run a fargate task, non blocking. To ensure the task is actuall running, poll
   its description with `describe`.
   """
+  @spec run(%__MODULE__{}) :: {:ok, infos()} | {:error, any}
   def run(opts = %__MODULE__{}) do
     data = %{
       tags: opts.tags,
@@ -62,6 +69,7 @@ defmodule Flex do
     end
   end
 
+  @spec describe(String.t(), String.t()) :: {:ok, infos()} | {:error, any}
   def describe(cluster_arn, task_arn) do
     data = %{
       cluster: cluster_arn,
@@ -80,11 +88,13 @@ defmodule Flex do
   of the specified task.  Possible status values are described at
   https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-lifecycle.html
   """
+  @spec wait_status(String.t(), String.t(), String.t()) :: :ok | {:error, any}
   def wait_status(cluster_arn, task_arn, desired_status) do
     wait_status(cluster_arn, task_arn, desired_status, @backoff_max_attempts, 0)
   end
 
-  @doc "Stops a task. `reason` will be visibile in the console"
+  @doc "Stops a task."
+  @spec stop(String.t(), String.t(), String.t()) :: :ok | {:error, any}
   def stop(cluster_arn, task_arn, reason) do
     data = %{
       cluster: cluster_arn,
@@ -93,12 +103,19 @@ defmodule Flex do
     }
 
     case AWS.ECS.stop_task(client(), data) do
-      {:ok, %{"task" => data}, _} -> take_task_info(data)
-      {:error, error} -> parse_error(error)
+      {:ok, %{"task" => _data}, _} ->
+        :ok
+
+      {:error, error} ->
+        case parse_error(error) do
+          {:error, %{"error" => "\"The referenced task was not found\""}} -> :ok
+          error -> error
+        end
     end
   end
 
   @doc "Retrieves the public IPv4 of the specified task"
+  @spec public_ip(String.t(), String.t()) :: {:ok, String.t()} | {:error, any}
   def public_ip(cluster_arn, task_arn) do
     with {:ok, task} <- describe(cluster_arn, task_arn) do
       take_public_ip(task.network_interface.id)
@@ -112,9 +129,6 @@ defmodule Flex do
 
     AWS.Client.create(id, secret, region)
   end
-
-  defp find_detail([], name, :fail),
-    do: {:error, "could not find #{name} within task detail attachments"}
 
   defp find_detail([], _, default), do: {:ok, default}
 
