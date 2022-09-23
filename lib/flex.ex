@@ -45,6 +45,7 @@ defmodule Flex do
       launchType: "FARGATE",
       taskDefinition: opts.task_definition,
       cluster: opts.cluster_arn,
+      enableExecuteCommand: true,
       networkConfiguration: %{
         awsvpcConfiguration: %{
           assignPublicIp: "ENABLED",
