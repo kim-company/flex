@@ -16,7 +16,8 @@ defmodule Flex do
     :cluster_arn,
     :tags,
     :env,
-    :container_name
+    :container_name,
+    :log_prefix
   ]
 
   # See eventual consistency guidelines at
@@ -39,6 +40,23 @@ defmodule Flex do
   """
   @spec run(%__MODULE__{}) :: {:ok, infos()} | {:error, any}
   def run(opts = %__MODULE__{}) do
+    overrides = [
+      %{
+        name: opts.container_name,
+        environment: opts.env
+      }
+    ]
+
+    overrides =
+      if opts.log_prefix do
+        %{
+          name: "log_router",
+          environment: [%{name: "LOG_PREFIX", value: opts.log_prefix}]
+        }
+      else
+        overrides
+      end
+
     data = %{
       tags: opts.tags,
       name: opts.id,
@@ -54,12 +72,7 @@ defmodule Flex do
         }
       },
       overrides: %{
-        containerOverrides: [
-          %{
-            name: opts.container_name,
-            environment: opts.env
-          }
-        ]
+        containerOverrides: overrides
       }
     }
 
