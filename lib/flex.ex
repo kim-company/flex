@@ -49,10 +49,13 @@ defmodule Flex do
 
     overrides =
       if opts.log_prefix do
-        %{
-          name: "log_router",
-          environment: [%{name: "LOG_PREFIX", value: opts.log_prefix}]
-        }
+        [
+          %{
+            name: "log_router",
+            environment: [%{name: "LOG_PREFIX", value: opts.log_prefix}]
+          }
+          | overrides
+        ]
       else
         overrides
       end
