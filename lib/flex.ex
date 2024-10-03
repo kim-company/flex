@@ -17,7 +17,8 @@ defmodule Flex do
     :tags,
     :env,
     :container_name,
-    :log_prefix
+    :log_prefix,
+    overrides: %{}
   ]
 
   # See eventual consistency guidelines at
@@ -74,9 +75,7 @@ defmodule Flex do
           subnets: opts.subnet_ids
         }
       },
-      overrides: %{
-        containerOverrides: overrides
-      }
+      overrides: Map.merge(%{containerOverrides: overrides}, opts.overrides)
     }
 
     # See: https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_RunTask.html
