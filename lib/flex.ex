@@ -161,7 +161,7 @@ defmodule Flex do
     AWS.Client.create(id, secret, region)
   end
 
-  defp managed_instance_public_ip(_, nil), do: {:ok, nil}
+  defp managed_instance_public_ip(_, nil), do: {:error, "missing_container_instance_id"}
   defp managed_instance_public_ip(cluster_arn, instance_id) do
     data = %{
       "cluster" => cluster_arn,
