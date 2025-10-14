@@ -71,12 +71,6 @@ defmodule Flex do
           {nil, [%{capacityProvider: id}]}
       end
 
-    placement_constraints =
-      case opts.launch_type do
-        :fargate -> nil
-        {:capacity_provider, _} -> [%{type: "distinctInstance"}]
-      end
-
     data = %{
       tags: opts.tags,
       name: opts.id,
@@ -93,7 +87,6 @@ defmodule Flex do
           subnets: opts.subnet_ids
         }
       }),
-      placementConstraints: placement_constraints,
       overrides: Map.merge(%{containerOverrides: overrides}, opts.overrides)
     }
 
