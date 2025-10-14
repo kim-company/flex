@@ -18,6 +18,7 @@ defmodule Flex do
     :env,
     :container_name,
     :log_prefix,
+    launch_type: :fargate,
     overrides: %{}
   ]
 
@@ -61,12 +62,23 @@ defmodule Flex do
         overrides
       end
 
+    {launch_type, capacity_provider} =
+      case opts.launch_type do
+        :fargate ->
+          {"FARGATE", nil}
+
+        {:capacity_provider, id} ->
+          {nil, [%{capacity_provider: id}]}
+      end
+
     data = %{
       tags: opts.tags,
       name: opts.id,
-      launchType: "FARGATE",
+      launchType: launch_type,
+      capacityProviderStrategy: capacity_provider,
       taskDefinition: opts.task_definition,
       cluster: opts.cluster_arn,
+      enableECSManagedTags: true,
       enableExecuteCommand: true,
       networkConfiguration: %{
         awsvpcConfiguration: %{
