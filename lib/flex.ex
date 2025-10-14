@@ -68,7 +68,7 @@ defmodule Flex do
           {"FARGATE", nil}
 
         {:capacity_provider, id} ->
-          {nil, [%{capacity_provider: id}]}
+          {nil, [%{capacityProvider: id}]}
       end
 
     data = %{
