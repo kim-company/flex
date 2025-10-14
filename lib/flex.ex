@@ -80,13 +80,13 @@ defmodule Flex do
       cluster: opts.cluster_arn,
       enableECSManagedTags: true,
       enableExecuteCommand: true,
-      networkConfiguration: %{
+      networkConfiguration: (if opts.launch_type == :fargate, do: %{
         awsvpcConfiguration: %{
-          assignPublicIp: (if opts.launch_type == :fargate, do: "ENABLED", else: "DISABLED"),
+          assignPublicIp: "ENABLED",
           securityGroups: opts.security_group_ids,
           subnets: opts.subnet_ids
         }
-      },
+      }),
       overrides: Map.merge(%{containerOverrides: overrides}, opts.overrides)
     }
 
@@ -146,7 +146,10 @@ defmodule Flex do
   @spec public_ip(String.t(), String.t()) :: {:ok, String.t()} | {:error, any}
   def public_ip(cluster_arn, task_arn) do
     with {:ok, task} <- describe(cluster_arn, task_arn) do
-      take_public_ip(task.network_interface.id)
+      case task.launch_type do
+        "MANAGED_INSTANCES" -> managed_instance_public_ip(cluster_arn, task.container_instance_arn)
+        "FARGATE" -> net_iface_public_ip(task.network_interface.id)
+      end
     end
   end
 
@@ -156,6 +159,19 @@ defmodule Flex do
     region = Application.get_env(:flex, :region)
 
     AWS.Client.create(id, secret, region)
+  end
+
+  defp managed_instance_public_ip(_, nil), do: {:ok, nil}
+  defp managed_instance_public_ip(cluster_arn, instance_id) do
+    data = %{
+      "cluster" => cluster_arn,
+      "containerInstances" => [instance_id]
+    }
+
+    with {:ok, %{"containerInstances" => [instance]}, _} <- AWS.ECS.describe_container_instances(client(), data),
+         {:ok, response, _} <- AWS.EC2.describe_instances(client(), %{"InstanceId.1" => instance["ec2InstanceId"]}) do
+      {:ok, response["DescribeInstancesResponse"]["reservationSet"]["item"]["instancesSet"]["item"]["ipAddress"]}
+    end
   end
 
   defp find_detail([], _, default), do: {:ok, default}
@@ -189,7 +205,9 @@ defmodule Flex do
          desired_status: Map.get(data, "desiredStatus"),
          task_arn: Map.get(data, "taskArn"),
          last_status: Map.get(data, "lastStatus"),
-         network_interface: iface
+         network_interface: iface,
+         launch_type: Map.get(data, "launchType"),
+         container_instance_arn: Map.get(data, "containerInstanceArn"),
        }}
     end
   end
@@ -236,12 +254,12 @@ defmodule Flex do
     end
   end
 
-  defp take_public_ip(eni_id) do
+  defp net_iface_public_ip(eni_id) do
     data = %{
       "NetworkInterfaceId.1" => eni_id
     }
 
-    case Flex.EC2.describe_network_interfaces(client(), data) do
+    case AWS.EC2.describe_network_interfaces(client(), data) do
       {:ok,
        %{
          "DescribeNetworkInterfacesResponse" => %{"networkInterfaceSet" => %{"item" => interface}}

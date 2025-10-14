@@ -18,7 +18,7 @@ defmodule Flex.MixProject do
   defp deps do
     [
       {:jason, "~> 1.2"},
-      {:aws, "~> 0.8"},
+      {:aws, "~> 1.0.9"},
       {:httpoison, "~> 1.6"}
     ]
   end
