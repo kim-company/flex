@@ -82,7 +82,7 @@ defmodule Flex do
       enableExecuteCommand: true,
       networkConfiguration: %{
         awsvpcConfiguration: %{
-          assignPublicIp: "ENABLED",
+          assignPublicIp: (if opts.launch_type == :fargate, do: "ENABLED", else: "DISABLED"),
           securityGroups: opts.security_group_ids,
           subnets: opts.subnet_ids
         }
