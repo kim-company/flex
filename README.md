@@ -12,18 +12,17 @@ def deps do
 end
 ```
 
-## Configuration
+## Usage
 
-Add your AWS credentials to your application config:
+First, create an AWS client with your credentials:
 
 ```elixir
-config :flex,
-  access_key_id: System.get_env("AWS_ACCESS_KEY_ID"),
-  secret_access_key: System.get_env("AWS_SECRET_ACCESS_KEY"),
-  region: "us-east-1"
+client = AWS.Client.create(
+  System.get_env("AWS_ACCESS_KEY_ID"),
+  System.get_env("AWS_SECRET_ACCESS_KEY"),
+  "us-east-1"
+)
 ```
-
-## Usage
 
 ### Running a Fargate Task
 
@@ -45,7 +44,7 @@ task = %Flex{
 }
 
 # Run the task
-{:ok, info} = Flex.run(task)
+{:ok, info} = Flex.run(client, task)
 # => {:ok, %{task_arn: "arn:aws:ecs:...", desired_status: "RUNNING", ...}}
 ```
 
@@ -62,16 +61,16 @@ task = %Flex{
 
 ```elixir
 # Wait for task to be running
-:ok = Flex.wait_status(cluster_arn, task_arn, "RUNNING")
+:ok = Flex.wait_status(client, cluster_arn, task_arn, "RUNNING")
 
 # Wait for task to stop
-:ok = Flex.wait_status(cluster_arn, task_arn, "STOPPED")
+:ok = Flex.wait_status(client, cluster_arn, task_arn, "STOPPED")
 ```
 
 ### Getting Task Information
 
 ```elixir
-{:ok, info} = Flex.describe(cluster_arn, task_arn)
+{:ok, info} = Flex.describe(client, cluster_arn, task_arn)
 # => %{
 #      desired_status: "RUNNING",
 #      last_status: "RUNNING",
@@ -87,14 +86,14 @@ task = %Flex{
 ### Getting Public IP
 
 ```elixir
-{:ok, ip} = Flex.public_ip(cluster_arn, task_arn)
+{:ok, ip} = Flex.public_ip(client, cluster_arn, task_arn)
 # => {:ok, "54.123.45.67"}
 ```
 
 ### Stopping a Task
 
 ```elixir
-:ok = Flex.stop(cluster_arn, task_arn, "Manual stop")
+:ok = Flex.stop(client, cluster_arn, task_arn, "Manual stop")
 ```
 
 ## Features
@@ -109,22 +108,22 @@ task = %Flex{
 
 ## API Reference
 
-### `Flex.run/1`
+### `Flex.run/2`
 
-Runs an ECS task (non-blocking). Returns task information including ARN and status.
+Runs an ECS task (non-blocking). Takes an AWS client and task configuration. Returns task information including ARN and status.
 
-### `Flex.describe/2`
+### `Flex.describe/3`
 
-Retrieves current information about a task.
+Retrieves current information about a task. Takes an AWS client, cluster ARN, and task ARN.
 
-### `Flex.wait_status/3`
+### `Flex.wait_status/4`
 
-Blocks until a task reaches the desired status. Uses exponential backoff with a maximum wait time of ~126 seconds.
+Blocks until a task reaches the desired status. Takes an AWS client, cluster ARN, task ARN, and desired status. Uses exponential backoff with a maximum wait time of ~126 seconds.
 
-### `Flex.stop/3`
+### `Flex.stop/4`
 
-Stops a running task with a reason message.
+Stops a running task with a reason message. Takes an AWS client, cluster ARN, task ARN, and reason.
 
-### `Flex.public_ip/2`
+### `Flex.public_ip/3`
 
-Retrieves the public IPv4 address of a task (works for both Fargate and managed instances).
+Retrieves the public IPv4 address of a task (works for both Fargate and managed instances). Takes an AWS client, cluster ARN, and task ARN.

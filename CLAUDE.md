@@ -23,14 +23,23 @@ mix format
 mix test
 ```
 
-### Configuration
-The library requires AWS credentials to be configured in your application's config:
+### Usage
+The library requires callers to create and provide an AWS client:
 
 ```elixir
-config :flex,
-  access_key_id: "YOUR_ACCESS_KEY",
-  secret_access_key: "YOUR_SECRET_KEY",
-  region: "us-east-1"
+# Create AWS client
+client = AWS.Client.create("YOUR_ACCESS_KEY", "YOUR_SECRET_KEY", "us-east-1")
+
+# Configure task
+task = %Flex{
+  task_definition: "my-task:1",
+  subnet_ids: ["subnet-123"],
+  security_group_ids: ["sg-123"],
+  cluster_arn: "arn:aws:ecs:us-east-1:123456789012:cluster/my-cluster"
+}
+
+# Run task
+{:ok, info} = Flex.run(client, task)
 ```
 
 ## Architecture
@@ -53,35 +62,36 @@ The `Flex` module (lib/flex.ex) is the main and only module in this library. It 
 
 #### Primary Functions
 
-**`run/1`** - Launches an ECS task (non-blocking)
-- Takes a `%Flex{}` struct with configuration
+**`run/2`** - Launches an ECS task (non-blocking)
+- Parameters: `(client, %Flex{})`
+- Takes an AWS client and a `%Flex{}` struct with configuration
 - Returns `{:ok, task_info}` with task details including ARN, status, and network interface
 - Automatically enables ECS managed tags and execute command
 - For Fargate: assigns public IP and uses awsvpc networking
 - For capacity providers: applies `distinctInstance` placement constraint
 
-**`describe/2`** - Gets current task information
-- Parameters: `(cluster_arn, task_arn)`
-- Returns same task info structure as `run/1`
+**`describe/3`** - Gets current task information
+- Parameters: `(client, cluster_arn, task_arn)`
+- Returns same task info structure as `run/2`
 - Returns `{:error, :not_found}` if task doesn't exist
 
-**`wait_status/3`** - Blocks until task reaches desired status
-- Parameters: `(cluster_arn, task_arn, desired_status)`
+**`wait_status/4`** - Blocks until task reaches desired status
+- Parameters: `(client, cluster_arn, task_arn, desired_status)`
 - Uses exponential backoff (base: 2 seconds, max attempts: 5)
 - Total max wait time: ~126 seconds
 - Desired status values: "RUNNING", "STOPPED", etc. (see AWS ECS task lifecycle docs)
 
-**`stop/3`** - Stops a running task
-- Parameters: `(cluster_arn, task_arn, reason)`
+**`stop/4`** - Stops a running task
+- Parameters: `(client, cluster_arn, task_arn, reason)`
 - Returns `:ok` even if task is already stopped/not found
 
-**`public_ip/2`** - Gets public IPv4 address of task
-- Parameters: `(cluster_arn, task_arn)`
+**`public_ip/3`** - Gets public IPv4 address of task
+- Parameters: `(client, cluster_arn, task_arn)`
 - Handles both Fargate (via network interface) and managed instances (via EC2 instance)
 
 #### Internal Architecture
 
-**AWS Client**: Created on-demand via `client/0`, reads credentials from application config.
+**AWS Client**: Callers must create and provide an `AWS.Client` instance to all API functions. This allows for better testability and flexibility in credential management. Create a client using `AWS.Client.create(access_key_id, secret_access_key, region)`.
 
 **Launch Types**: The library supports two launch types with different networking:
 - `:fargate` - Uses Fargate with awsvpc networking, public IP assignment

@@ -40,8 +40,8 @@ defmodule Flex do
   run a fargate task, non blocking. To ensure the task is actuall running, poll
   its description with `describe`.
   """
-  @spec run(%__MODULE__{}) :: {:ok, infos()} | {:error, any}
-  def run(opts = %__MODULE__{}) do
+  @spec run(AWS.Client.t(), %__MODULE__{}) :: {:ok, infos()} | {:error, any}
+  def run(client, opts = %__MODULE__{}) do
     overrides = [
       %{
         name: opts.container_name,
@@ -101,20 +101,20 @@ defmodule Flex do
     }
 
     # See: https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_RunTask.html
-    case AWS.ECS.run_task(client(), data) do
+    case AWS.ECS.run_task(client, data) do
       {:ok, %{"failures" => [], "tasks" => [data | []]}, _} -> take_task_info(data)
       {:error, error} -> parse_error(error)
     end
   end
 
-  @spec describe(String.t(), String.t()) :: {:ok, infos()} | {:error, any}
-  def describe(cluster_arn, task_arn) do
+  @spec describe(AWS.Client.t(), String.t(), String.t()) :: {:ok, infos()} | {:error, any}
+  def describe(client, cluster_arn, task_arn) do
     data = %{
       cluster: cluster_arn,
       tasks: [task_arn]
     }
 
-    case AWS.ECS.describe_tasks(client(), data) do
+    case AWS.ECS.describe_tasks(client, data) do
       {:ok, %{"failures" => [], "tasks" => [data]}, _} -> take_task_info(data)
       {:ok, %{"failures" => [%{"reason" => "MISSING"}], "tasks" => []}, _} -> {:error, :not_found}
       {:error, error} -> parse_error(error)
@@ -126,21 +126,21 @@ defmodule Flex do
   of the specified task.  Possible status values are described at
   https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-lifecycle.html
   """
-  @spec wait_status(String.t(), String.t(), String.t()) :: :ok | {:error, any}
-  def wait_status(cluster_arn, task_arn, desired_status) do
-    wait_status(cluster_arn, task_arn, desired_status, @backoff_max_attempts, 0)
+  @spec wait_status(AWS.Client.t(), String.t(), String.t(), String.t()) :: :ok | {:error, any}
+  def wait_status(client, cluster_arn, task_arn, desired_status) do
+    wait_status(client, cluster_arn, task_arn, desired_status, @backoff_max_attempts, 0)
   end
 
   @doc "Stops a task."
-  @spec stop(String.t(), String.t(), String.t()) :: :ok | {:error, any}
-  def stop(cluster_arn, task_arn, reason) do
+  @spec stop(AWS.Client.t(), String.t(), String.t(), String.t()) :: :ok | {:error, any}
+  def stop(client, cluster_arn, task_arn, reason) do
     data = %{
       cluster: cluster_arn,
       task: task_arn,
       reason: reason
     }
 
-    case AWS.ECS.stop_task(client(), data) do
+    case AWS.ECS.stop_task(client, data) do
       {:ok, %{"task" => _data}, _} ->
         :ok
 
@@ -153,39 +153,31 @@ defmodule Flex do
   end
 
   @doc "Retrieves the public IPv4 of the specified task"
-  @spec public_ip(String.t(), String.t()) :: {:ok, String.t()} | {:error, any}
-  def public_ip(cluster_arn, task_arn) do
-    with {:ok, task} <- describe(cluster_arn, task_arn) do
+  @spec public_ip(AWS.Client.t(), String.t(), String.t()) :: {:ok, String.t()} | {:error, any}
+  def public_ip(client, cluster_arn, task_arn) do
+    with {:ok, task} <- describe(client, cluster_arn, task_arn) do
       case task.launch_type do
         "MANAGED_INSTANCES" ->
-          managed_instance_public_ip(cluster_arn, task.container_instance_arn)
+          managed_instance_public_ip(client, cluster_arn, task.container_instance_arn)
 
         "FARGATE" ->
-          net_iface_public_ip(task.network_interface.id)
+          net_iface_public_ip(client, task.network_interface.id)
       end
     end
   end
 
-  defp client() do
-    id = Application.get_env(:flex, :access_key_id)
-    secret = Application.get_env(:flex, :secret_access_key)
-    region = Application.get_env(:flex, :region)
+  defp managed_instance_public_ip(_, _, nil), do: {:error, "missing_container_instance_id"}
 
-    AWS.Client.create(id, secret, region)
-  end
-
-  defp managed_instance_public_ip(_, nil), do: {:error, "missing_container_instance_id"}
-
-  defp managed_instance_public_ip(cluster_arn, instance_id) do
+  defp managed_instance_public_ip(client, cluster_arn, instance_id) do
     data = %{
       "cluster" => cluster_arn,
       "containerInstances" => [instance_id]
     }
 
     with {:ok, %{"containerInstances" => [instance]}, _} <-
-           AWS.ECS.describe_container_instances(client(), data),
+           AWS.ECS.describe_container_instances(client, data),
          {:ok, response, _} <-
-           AWS.EC2.describe_instances(client(), %{"InstanceId.1" => instance["ec2InstanceId"]}) do
+           AWS.EC2.describe_instances(client, %{"InstanceId.1" => instance["ec2InstanceId"]}) do
       {:ok,
        response["DescribeInstancesResponse"]["reservationSet"]["item"]["instancesSet"]["item"][
          "ipAddress"
@@ -246,12 +238,12 @@ defmodule Flex do
 
   defp backoff_wait_secs(n), do: @backoff_wait_base_secs <<< n
 
-  defp wait_status(_, _, desired, max_attempts, attempts) when attempts >= max_attempts do
+  defp wait_status(_, _, _, desired, max_attempts, attempts) when attempts >= max_attempts do
     {:error, "wait status: task did not reach status #{desired} in #{max_attempts} calls"}
   end
 
-  defp wait_status(cluster_arn, task_arn, desired, max_attempts, attempt) do
-    case describe(cluster_arn, task_arn) do
+  defp wait_status(client, cluster_arn, task_arn, desired, max_attempts, attempt) do
+    case describe(client, cluster_arn, task_arn) do
       {:ok, %{desired_status: ^desired, last_status: ^desired}} ->
         :ok
 
@@ -263,7 +255,7 @@ defmodule Flex do
         )
 
         Process.sleep(wait * 1000)
-        wait_status(cluster_arn, task_arn, desired, max_attempts, attempt - 1)
+        wait_status(client, cluster_arn, task_arn, desired, max_attempts, attempt - 1)
 
       {:ok, %{desired_status: other, last_status: _}} ->
         {:error, "wait status: desired status switched to #{other}"}
@@ -273,12 +265,12 @@ defmodule Flex do
     end
   end
 
-  defp net_iface_public_ip(eni_id) do
+  defp net_iface_public_ip(client, eni_id) do
     data = %{
       "NetworkInterfaceId.1" => eni_id
     }
 
-    case AWS.EC2.describe_network_interfaces(client(), data) do
+    case AWS.EC2.describe_network_interfaces(client, data) do
       {:ok,
        %{
          "DescribeNetworkInterfacesResponse" => %{"networkInterfaceSet" => %{"item" => interface}}
