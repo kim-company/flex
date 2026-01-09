@@ -17,9 +17,7 @@ defmodule Flex.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:jason, "~> 1.2"},
-      {:aws, "~> 1.0.9"},
-      {:httpoison, "~> 1.6"}
+      {:aws, "~> 1.0.9"}
     ]
   end
 end
