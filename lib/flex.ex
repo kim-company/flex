@@ -18,6 +18,19 @@ defmodule Flex do
     :env,
     :container_name,
     :log_prefix,
+    :assign_public_ip,
+    :capacity_provider_strategy,
+    :enable_execute_command,
+    :enable_managed_tags,
+    :platform_version,
+    :placement_constraints,
+    :placement_strategy,
+    :propagate_tags,
+    :group,
+    :started_by,
+    :count,
+    :network_configuration,
+    :run_task_overrides,
     launch_type: :fargate,
     overrides: %{}
   ]
@@ -71,34 +84,59 @@ defmodule Flex do
           {nil, [%{capacityProvider: id}]}
       end
 
-    placement_constraints =
-      case opts.launch_type do
-        :fargate -> nil
-        {:capacity_provider, _} -> [%{type: "distinctInstance"}]
+    capacity_provider =
+      case opts.capacity_provider_strategy do
+        nil -> capacity_provider
+        strategy -> strategy
       end
 
-    data = %{
-      tags: opts.tags,
-      name: opts.id,
-      launchType: launch_type,
-      capacityProviderStrategy: capacity_provider,
-      taskDefinition: opts.task_definition,
-      cluster: opts.cluster_arn,
-      enableECSManagedTags: true,
-      enableExecuteCommand: true,
-      networkConfiguration:
-        if(opts.launch_type == :fargate,
-          do: %{
+    placement_constraints =
+      case {opts.placement_constraints, opts.launch_type} do
+        {nil, {:capacity_provider, _}} -> [%{type: "distinctInstance"}]
+        {nil, _} -> nil
+        {constraints, _} -> constraints
+      end
+
+    network_configuration =
+      cond do
+        opts.network_configuration ->
+          opts.network_configuration
+
+        opts.launch_type == :fargate ->
+          %{
             awsvpcConfiguration: %{
-              assignPublicIp: "ENABLED",
+              assignPublicIp: assign_public_ip(opts.assign_public_ip),
               securityGroups: opts.security_group_ids,
               subnets: opts.subnet_ids
             }
           }
-        ),
-      placementConstraints: placement_constraints,
-      overrides: Map.merge(%{containerOverrides: overrides}, opts.overrides)
-    }
+
+        true ->
+          nil
+      end
+
+    data =
+      %{
+        tags: opts.tags,
+        name: opts.id,
+        launchType: launch_type,
+        capacityProviderStrategy: capacity_provider,
+        taskDefinition: opts.task_definition,
+        cluster: opts.cluster_arn,
+        enableECSManagedTags: opts.enable_managed_tags != false,
+        enableExecuteCommand: opts.enable_execute_command != false,
+        networkConfiguration: network_configuration,
+        placementConstraints: placement_constraints,
+        placementStrategy: opts.placement_strategy,
+        platformVersion: opts.platform_version,
+        propagateTags: opts.propagate_tags,
+        group: opts.group,
+        startedBy: opts.started_by,
+        count: opts.count,
+        overrides: Map.merge(%{containerOverrides: overrides}, opts.overrides)
+      }
+      |> drop_nil_values()
+      |> Map.merge(opts.run_task_overrides || %{})
 
     # See: https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_RunTask.html
     case AWS.ECS.run_task(client, data) do
@@ -237,6 +275,18 @@ defmodule Flex do
   defp parse_error(error), do: {:error, error}
 
   defp backoff_wait_secs(n), do: @backoff_wait_base_secs <<< n
+
+  defp assign_public_ip(nil), do: "ENABLED"
+  defp assign_public_ip(:enabled), do: "ENABLED"
+  defp assign_public_ip(true), do: "ENABLED"
+  defp assign_public_ip(:disabled), do: "DISABLED"
+  defp assign_public_ip(false), do: "DISABLED"
+
+  defp drop_nil_values(map) do
+    map
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Map.new()
+  end
 
   defp wait_status(_, _, _, desired, max_attempts, attempts) when attempts >= max_attempts do
     {:error, "wait status: task did not reach status #{desired} in #{max_attempts} calls"}

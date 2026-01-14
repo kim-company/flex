@@ -99,12 +99,25 @@ task = %Flex{
 ## Features
 
 - **Fargate and Managed Instance Support**: Run tasks on both Fargate and capacity providers
-- **Network Configuration**: Automatic awsvpc networking for Fargate with public IP assignment
+- **Network Configuration**: Automatic awsvpc networking for Fargate with public IP assignment (configurable)
 - **Environment Variable Overrides**: Override container environment variables at runtime
 - **Log Router Integration**: Support for log prefix configuration
-- **ECS Execute Command**: Automatically enabled for all tasks
+- **ECS Execute Command**: Automatically enabled for all tasks (configurable)
 - **Exponential Backoff**: Built-in retry logic for status polling
 - **Public IP Resolution**: Retrieve public IPs for both Fargate and EC2-backed tasks
+
+## Configuration Knobs
+
+Additional `Flex` struct fields mapped into `run_task`:
+
+- `assign_public_ip` (`:enabled | :disabled | boolean`)
+- `capacity_provider_strategy` (list of strategies)
+- `enable_execute_command` / `enable_managed_tags` (booleans)
+- `platform_version` (string)
+- `placement_constraints` / `placement_strategy` (lists)
+- `propagate_tags`, `group`, `started_by`, `count`
+- `network_configuration` (raw ECS network configuration)
+- `run_task_overrides` (raw ECS `run_task` fields)
 
 ## API Reference
 
